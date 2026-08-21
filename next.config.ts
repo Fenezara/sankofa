@@ -41,7 +41,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  output: process.env.BUILD_STANDALONE ? "standalone" : undefined,
   typescript: {
     ignoreBuildErrors: true,
   },
