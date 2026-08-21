@@ -28,7 +28,7 @@
   "scripts": {
     "dev": "next dev -p 3000 2>&1 | tee dev.log",
     "postinstall": "prisma generate",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "build:standalone": "BUILD_STANDALONE=1 next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "next start -p 3000",
     "lint": "eslint .",
