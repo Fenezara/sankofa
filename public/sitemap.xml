@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+
+  <!-- Page principale (single-route app) -->
+  <url>
+    <loc>https://sankofa.ci/</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://sankofa.ci/logo.svg</image:loc>
+      <image:title>Sankofa — Ton aîné·e santé</image:title>
+      <image:caption>Coach santé IA validé par des médecins ivoiriens. 100% anonyme, 24/7.</image:caption>
+    </image:image>
+  </url>
+
+  <!-- Manifest PWA -->
+  <url>
+    <loc>https://sankofa.ci/manifest.json</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+  <!-- Icônes PWA -->
+  <url>
+    <loc>https://sankofa.ci/icons/icon-192.png</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+  <url>
+    <loc>https://sankofa.ci/icons/icon-512.png</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.2</priority>
+  </url>
+
+  <!-- Images publiques (SEO) -->
+  <url>
+    <loc>https://sankofa.ci/images/v3/persona-aya.jpg</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://sankofa.ci/images/v3/persona-yao.jpg</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://sankofa.ci/images/v3/persona-tonton.jpg</loc>
+    <lastmod>2026-08-18</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.4</priority>
+  </url>
+
+</urlset>

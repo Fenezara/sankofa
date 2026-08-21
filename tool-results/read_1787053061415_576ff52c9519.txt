@@ -1,0 +1,1937 @@
+     1→"use client";
+     2→
+     3→/**
+     4→ * Sankofa — Chat (V2)
+     5→ *
+     6→ * - 3 personas (grande_soeur par défaut, grand_frere, tonton_medecin)
+     7→ * - Bulles WhatsApp-style avec palette Sankofa (terracotta assistant, rose-couchée user)
+     8→ * - Suggestions en forme de cauris
+     9→ * - Avatar Aya = symbole Adinkra Aya (SVG)
+    10→ * - Welcome message ts=0 (sentinel) pour éviter hydration mismatch
+    11→ * - Personas envoyés au backend ; registre adaptatif géré côté serveur
+    12→ */
+    13→
+    14→import * as React from "react";
+    15→import { motion, AnimatePresence } from "framer-motion";
+    16→import { Send, Loader2, ShieldCheck, Stethoscope, AlertTriangle, Lock, Mic, Square, Volume2, ThumbsUp, ThumbsDown, Info, X } from "lucide-react";
+    17→import { toast } from "sonner";
+    18→import { playSendSound, playReceiveSound } from "@/lib/sounds";
+    19→import { v4 as uuidv4 } from "uuid";
+    20→
+    21→import { Button } from "@/components/ui/button";
+    22→import { Input } from "@/components/ui/input";
+    23→import { Badge } from "@/components/ui/badge";
+    24→import { cn } from "@/lib/utils";
+    25→import { CaurisChip } from "@/components/cultural/cauris-chip";
+    26→import { SankofaLogo } from "@/components/aya/sankofa-logo";
+    27→import { LoginButton } from "@/components/auth/login-button";
+    28→import { useSession } from "@/components/auth/auth-provider";
+    29→import type { Persona, RedFlagTopic } from "@/lib/guardrails";
+    30→import {
+    31→  COMPANION_CHECK_IN_INTERVAL_MS,
+    32→  COMPANION_MAX_CHECK_INS,
+    33→  COMPANION_RESUME_MESSAGE,
+    34→  COMPANION_AUTO_CANCEL_MESSAGE,
+    35→  INITIAL_COMPANION_STATE,
+    36→  loadCompanionState,
+    37→  saveCompanionState,
+    38→  getCheckInMessage,
+    39→  getQuickActionResponse,
+    40→  getTriggerLabel,
+    41→  type CompanionState,
+    42→  type CompanionQuickAction,
+    43→} from "@/lib/companion";
+    44→import {
+    45→  CompanionBanner,
+    46→  CompanionQuickActions,
+    47→} from "@/components/aya/companion-banner";
+    48→
+    49→/** Photo portrait par persona (répertoire /public/images/v3/). */
+    50→const PERSONA_PHOTO: Record<Persona, string> = {
+    51→  grande_soeur: "/images/v3/persona-aya.jpg",
+    52→  grand_frere: "/images/v3/persona-yao.jpg",
+    53→  tonton_medecin: "/images/v3/persona-tonton.jpg",
+    54→};
+    55→
+    56→/** Alt texte par persona. */
+    57→const PERSONA_ALT: Record<Persona, string> = {
+    58→  grande_soeur: "Portrait d'Aya, jeune femme ivoirienne, grande sœur bienveillante",
+    59→  grand_frere: "Portrait de Yao, jeune homme ivoirien, grand frère protecteur",
+    60→  tonton_medecin: "Portrait de Tonton Koffi, médecin ivoirien mature au stéthoscope",
+    61→};
+    62→
+    63→/** Anneau Adinkra décoratif autour de l'avatar (SVG, pas le visage). */
+    64→function AdinkraRing({ size }: { size: number }) {
+    65→  const stroke = Math.max(1.2, size * 0.06);
+    66→  const r = size / 2 - stroke;
+    67→  const cx = size / 2;
+    68→  const cy = size / 2;
+    69→  return (
+    70→    <svg
+    71→      aria-hidden="true"
+    72→      width={size}
+    73→      height={size}
+    74→      viewBox={`0 0 ${size} ${size}`}
+    75→      className="absolute inset-0 pointer-events-none"
+    76→    >
+    77→      <defs>
+    78→        <linearGradient id="aya-ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+    79→          <stop offset="0%" stopColor="#F4C77B" />
+    80→          <stop offset="50%" stopColor="#E89B3C" />
+    81→          <stop offset="100%" stopColor="#9B3F1F" />
+    82→        </linearGradient>
+    83→      </defs>
+    84→      <circle
+    85→        cx={cx}
+    86→        cy={cy}
+    87→        r={r}
+    88→        fill="none"
+    89→        stroke="url(#aya-ring-grad)"
+    90→        strokeWidth={stroke}
+    91→        strokeDasharray={`${r * 0.18} ${r * 0.12}`}
+    92→        strokeLinecap="round"
+    93→        transform={`rotate(-90 ${cx} ${cy})`}
+    94→      />
+    95→    </svg>
+    96→  );
+    97→}
+    98→
+    99→/** Avatar persona photoréaliste (header 40px, bulles 32px). */
+   100→function PersonaAvatar({
+   101→  persona,
+   102→  size,
+   103→  className,
+   104→  priority = false,
+   105→}: {
+   106→  persona: Persona;
+   107→  size: number;
+   108→  className?: string;
+   109→  priority?: boolean;
+   110→}) {
+   111→  return (
+   112→    <div
+   113→      className={cn("relative shrink-0 rounded-full overflow-hidden bg-terracotta", className)}
+   114→      style={{ width: size, height: size }}
+   115→    >
+   116→      {/* Avatar persona photoréaliste */}
+   117→      <img
+   118→        src={PERSONA_PHOTO[persona]}
+   119→        alt={PERSONA_ALT[persona]}
+   120→        width={size}
+   121→        height={size}
+   122→        loading={priority ? "eager" : "lazy"}
+   123→        decoding="async"
+   124→        className="object-cover w-full h-full"
+   125→      />
+   126→      <AdinkraRing size={size} />
+   127→    </div>
+   128→  );
+   129→}
+   130→
+   131→export interface ChatMessage {
+   132→  id: string;
+   133→  role: "user" | "assistant";
+   134→  content: string;
+   135→  ts: number;
+   136→  triageLevel?: "info" | "orientation" | "urgence";
+   137→  tpeActivated?: boolean;
+   138→  protocolUsed?: string | null;
+   139→  persona?: Persona;
+   140→  /** Message du mode compagnon (check-in / quick action) — style différencié. */
+   141→  companion?: boolean;
+   142→  /** V3 — Émotion détectée dans le message utilisateur (transparence + empathie). */
+   143→  emotion?: "détresse" | "anxieux" | "triste" | "colère" | "honte" | "neutre";
+   144→  /** V3 — Score d'intensité émotionnelle 0-1. */
+   145→  emotionIntensity?: number;
+   146→  /** V3 — True si Sankofa suggère un check-in émotionnel (détresse haute). */
+   147→  needsEmotionalCheckIn?: boolean;
+   148→  /** V3 — Recommandation de switch de persona (l'utilisateur garde le choix final). */
+   149→  personaRecommendation?: {
+   150→    recommended: "grande_soeur" | "grand_frere" | "tonton_medecin";
+   151→    current: "grande_soeur" | "grand_frere" | "tonton_medecin";
+   152→    shouldSuggest: boolean;
+   153→    reason: string;
+   154→  };
+   155→  /** V3 — Slugs des protocoles RAG utilisés (transparence). */
+   156→  protocolsUsed?: string[];
+   157→  /** V3 — Registre/tone détecté côté serveur (transparence). */
+   158→  register?: "nouchi" | "sober" | "soutenu" | "standard" | "familier";
+   159→}
+   160→
+   161→interface ChatResponse {
+   162→  reply: string;
+   163→  triageLevel: "info" | "orientation" | "urgence";
+   164→  tpeActivated?: boolean;
+   165→  protocolUsed?: string | null;
+   166→  redFlagTopic?: string;
+   167→  persona: Persona;
+   168→  personaName?: string;
+   169→  personaLabel?: string;
+   170→  register?: "nouchi" | "sober" | "soutenu" | "standard" | "familier";
+   171→  userRegister?: "nouchi" | "soutenu" | "standard" | "familier";
+   172→  /** V3 — Émotion détectée + intensité + check-in émotionnel suggéré. */
+   173→  emotion?: "détresse" | "anxieux" | "triste" | "colère" | "honte" | "neutre";
+   174→  emotionIntensity?: number;
+   175→  needsEmotionalCheckIn?: boolean;
+   176→  /** V3 — Recommandation de persona (l'utilisateur garde le choix final). */
+   177→  personaRecommendation?: {
+   178→    recommended: "grande_soeur" | "grand_frere" | "tonton_medecin";
+   179→    current: "grande_soeur" | "grand_frere" | "tonton_medecin";
+   180→    shouldSuggest: boolean;
+   181→    reason: string;
+   182→  };
+   183→  /** V3 — Slugs des protocoles RAG utilisés (transparence). */
+   184→  protocolsUsed?: string[];
+   185→}
+   186→
+   187→/**
+   188→ * Métadonnées reçues en premier événement SSE du stream /api/chat/stream
+   189→ * (type === "meta"). Contient triage, persona, registre, émotion, TPE,
+   190→ * protocoles utilisés, et potentiellement un redFlagTopic (sujet sensible).
+   191→ */
+   192→interface StreamMeta {
+   193→  triageLevel: "info" | "orientation" | "urgence" | null;
+   194→  persona: Persona;
+   195→  register?: "nouchi" | "sober" | "soutenu" | "standard" | "familier";
+   196→  emotion?: "détresse" | "anxieux" | "triste" | "colère" | "honte" | "neutre";
+   197→  emotionIntensity?: number;
+   198→  needsEmotionalCheckIn?: boolean;
+   199→  tpeActivated?: boolean;
+   200→  protocolUsed?: string | null;
+   201→  protocolsUsed?: string[];
+   202→  personaRecommendation?: {
+   203→    recommended: "grande_soeur" | "grand_frere" | "tonton_medecin";
+   204→    current: "grande_soeur" | "grand_frere" | "tonton_medecin";
+   205→    shouldSuggest: boolean;
+   206→    reason: string;
+   207→  };
+   208→  redFlagTopic?: RedFlagTopic;
+   209→}
+   210→
+   211→const STORAGE_KEY = "aya:anonymousId";
+   212→const HISTORY_KEY = "aya:chatHistory";
+   213→const PERSONA_KEY = "aya:persona";
+   214→// Version du cache — incrémenter à chaque modification du welcome ou de la structure des messages.
+   215→// Force l'invalidation de l'historique localStorage pour éviter les hydration mismatches.
+   216→const HISTORY_VERSION = "v7-fr-nouchi";
+   217→
+   218→interface PersonaMeta {
+   219→  id: Persona;
+   220→  label: string;
+   221→  sub: string;
+   222→  name: string;
+   223→  initials: string;
+   224→}
+   225→
+   226→const PERSONAS: PersonaMeta[] = [
+   227→  {
+   228→    id: "grande_soeur",
+   229→    label: "Grande sœur",
+   230→    sub: "Aya · aînée bienveillante",
+   231→    name: "Aya",
+   232→    initials: "A",
+   233→  },
+   234→  {
+   235→    id: "grand_frere",
+   236→    label: "Grand frère",
+   237→    sub: "Yao · aîné protecteur",
+   238→    name: "Yao",
+   239→    initials: "Y",
+   240→  },
+   241→  {
+   242→    id: "tonton_medecin",
+   243→    label: "Tonton médecin",
+   244→    sub: "Tonton Koffi · clinicien",
+   245→    name: "Tonton Koffi",
+   246→    initials: "TK",
+   247→  },
+   248→];
+   249→
+   250→/** Map rapide persona → prénom (transparence V3). */
+   251→const PERSONA_NAME: Record<Persona, string> = {
+   252→  grande_soeur: "Aya",
+   253→  grand_frere: "Yao",
+   254→  tonton_medecin: "Tonton Koffi",
+   255→};
+   256→
+   257→/** Message d'accueil personnalisé par persona. */
+   258→function buildWelcomeMessage(persona: Persona): ChatMessage {
+   259→  let content: string;
+   260→  if (persona === "grande_soeur") {
+   261→    content =
+   262→      "Salut poto 👋, ici c'est Sankofa.\n\n" +
+   263→      "100% anonyme, zéro jugement, je suis là pour toi 24/7. Tu peux me parler santé sexuelle, " +
+   264→      "addiction, peau, moral, nutrition... tout ce qui te trotte dans la tête.\n\n" +
+   265→      "Y'a pas drap, on est ensemble. 🌿\n\n" +
+   266→      "Vas-y, clique sur une suggestion en forme de cauris, ou tape ta question.";
+   267→  } else if (persona === "grand_frere") {
+   268→    content =
+   269→      "Yo mon frère 👋, ici c'est Yao.\n\n" +
+   270→      "100% anonyme, zéro jugement, je suis là pour toi 24/7. On parle santé, filles, contraception, " +
+   271→      "tramadol, acné, examens, bouffe... tout ce qui te tracasse.\n\n" +
+   272→      "Y'a pas drap, on est ensemble. 🌿\n\n" +
+   273→      "Vas-y, clique sur une suggestion ou tape ta question direct.";
+   274→  } else {
+   275→    // tonton_medecin
+   276→    content =
+   277→      "Bonjour 👋, ici c'est Tonton Koffi.\n\n" +
+   278→      "100% anonyme, je suis là pour t'orienter 24/7. Pose-moi tes questions sur la contraception, " +
+   279→      "les IST, le TPE 72h, le tramadol, la peau, le stress, la nutrition... Je t'explique le pourquoi, sans jargon.\n\n" +
+   280→      "On prend soin de toi ensemble. 🌿\n\n" +
+   281→      "Vas-y, clique sur une suggestion ou tape ta question.";
+   282→  }
+   283→  return {
+   284→    id: `welcome-${persona}`,
+   285→    role: "assistant",
+   286→    content,
+   287→    ts: 0,
+   288→    persona,
+   289→  };
+   290→}
+   291→
+   292→// Sentinel welcome (initial, replaced client-side once persona is loaded)
+   293→const WELCOME_MESSAGE: ChatMessage = buildWelcomeMessage("grande_soeur");
+   294→
+   295→const SUGGESTIONS = [
+   296→  // SSR
+   297→  { label: "Rapport non protégé hier soir", emoji: "⚠️" },
+   298→  { label: "Pilule du lendemain", emoji: "💊" },
+   299→  { label: "Brûlure en urinant, c'est grave ?", emoji: "🔥" },
+   300→  { label: "Mon préservatif a craqué", emoji: "💥" },
+   301→  // Addictologie
+   302→  { label: "Je consomme trop de tramadol", emoji: "💊" },
+   303→  { label: "Comment arrêter le tabac ?", emoji: "🚬" },
+   304→  // Dermatologie
+   305→  { label: "Crème éclaircissante, danger ?", emoji: "🧴" },
+   306→  { label: "J'ai de l'acné, que faire ?", emoji: "😌" },
+   307→  // Santé mentale
+   308→  { label: "Je me sens triste tout le temps", emoji: "🤍" },
+   309→  { label: "Stress pour mes examens", emoji: "📚" },
+   310→  // Nutrition
+   311→  { label: "Comment bien manger pas cher ?", emoji: "🍌" },
+   312→  { label: "Les compléments alimentaires, safe ?", emoji: "🧪" },
+   313→  // Multilingue — audio bientôt (Dioula & Baoulé à l'oral)
+   314→  // Les jeunes ivoiriens parlent ces langues mais les écrivent rarement.
+   315→  // L'audio (ASR/TTS) permettra de les parler plutôt que les écrire.
+   316→];
+   317→
+   318→function formatTime(ts: number): string {
+   319→  if (!ts) return "";
+   320→  try {
+   321→    return new Date(ts).toLocaleTimeString("fr-FR", {
+   322→      hour: "2-digit",
+   323→      minute: "2-digit",
+   324→    });
+   325→  } catch {
+   326→    return "";
+   327→  }
+   328→}
+   329→
+   330→function getAnonymousId(): string {
+   331→  if (typeof window === "undefined") return "server";
+   332→  try {
+   333→    let id = window.localStorage.getItem(STORAGE_KEY);
+   334→    if (!id) {
+   335→      id = uuidv4();
+   336→      window.localStorage.setItem(STORAGE_KEY, id);
+   337→    }
+   338→    return id;
+   339→  } catch {
+   340→    return uuidv4();
+   341→  }
+   342→}
+   343→
+   344→function loadHistory(persona: Persona): ChatMessage[] {
+   345→  if (typeof window === "undefined") return [buildWelcomeMessage(persona)];
+   346→  try {
+   347→    // Check version — if mismatch, clear old history and start fresh
+   348→    const storedVersion = window.localStorage.getItem("aya:historyVersion");
+   349→    if (storedVersion !== HISTORY_VERSION) {
+   350→      window.localStorage.removeItem(HISTORY_KEY);
+   351→      window.localStorage.setItem("aya:historyVersion", HISTORY_VERSION);
+   352→      return [buildWelcomeMessage(persona)];
+   353→    }
+   354→
+   355→    const raw = window.localStorage.getItem(HISTORY_KEY);
+   356→    if (!raw) return [buildWelcomeMessage(persona)];
+   357→    const parsed = JSON.parse(raw) as ChatMessage[];
+   358→    if (!Array.isArray(parsed) || parsed.length === 0) return [buildWelcomeMessage(persona)];
+   359→
+   360→    // Invalider les anciens welcome messages si leur contenu ne correspond plus
+   361→    // au welcome actuel (évite hydration mismatch quand le welcome change entre versions)
+   362→    const currentWelcome = buildWelcomeMessage(persona);
+   363→    const updated = parsed.map((msg) => {
+   364→      if (
+   365→        typeof msg.id === "string" &&
+   366→        msg.id.startsWith("welcome-") &&
+   367→        msg.content !== currentWelcome.content
+   368→      ) {
+   369→        return { ...msg, content: currentWelcome.content, persona };
+   370→      }
+   371→      return msg;
+   372→    });
+   373→    return updated;
+   374→  } catch {
+   375→    return [buildWelcomeMessage(persona)];
+   376→  }
+   377→}
+   378→
+   379→function saveHistory(messages: ChatMessage[]) {
+   380→  if (typeof window === "undefined") return;
+   381→  try {
+   382→    const trimmed = messages.slice(-50);
+   383→    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+   384→  } catch {
+   385→    // localStorage plein ou bloqué
+   386→  }
+   387→}
+   388→
+   389→function loadPersona(): Persona {
+   390→  if (typeof window === "undefined") return "grande_soeur";
+   391→  try {
+   392→    const stored = window.localStorage.getItem(PERSONA_KEY) as Persona | null;
+   393→    if (stored && ["grande_soeur", "grand_frere", "tonton_medecin"].includes(stored)) {
+   394→      return stored;
+   395→    }
+   396→  } catch {
+   397→    // ignore
+   398→  }
+   399→  return "grande_soeur";
+   400→}
+   401→
+   402→function TriageBadge({ level }: { level: "info" | "orientation" | "urgence" }) {
+   403→  if (level === "info") return null;
+   404→  if (level === "orientation") {
+   405→    return (
+   406→      <Badge
+   407→        variant="outline"
+   408→        className="bg-ambre-couchant/15 border-ambre-couchant/40 text-ocre-rouge gap-1"
+   409→      >
+   410→        <Stethoscope className="size-3" />
+   411→        Orientation conseillée
+   412→      </Badge>
+   413→    );
+   414→  }
+   415→  return (
+   416→    <Badge className="bg-ocre-rouge text-text-on-dark border-0 gap-1">
+   417→      <AlertTriangle className="size-3" />
+   418→      Urgence — voir structure
+   419→    </Badge>
+   420→  );
+   421→}
+   422→
+   423→/**
+   424→ * SpeakButton — écouter une réponse de Sankofa (TTS).
+   425→ *
+   426→ * Bouton "Écouter" placé à côté de "Sauver dans mon carnet". Au clic, on POST
+   427→ * le texte + persona vers /api/chat/speak, qui renvoie un MP3 qu'on joue via
+   428→ * un élément `Audio` créé en mémoire (pas de node DOM supplémentaire par bulle).
+   429→ *
+   430→ * États :
+   431→ *   - idle : icône Volume2 + "Écouter"
+   432→ *   - loading (fetch TTS) : Loader2 spinning
+   433→ *   - playing : icône Square + "Stop" — clic = stop
+   434→ *
+   435→ * Le `Audio` est créé dans un useEffect (client-only) → pas d'accès `window`
+   436→ * pendant le rendu → pas de hydration mismatch.
+   437→ */
+   438→function SpeakButton({ text, persona }: { text: string; persona: Persona }) {
+   439→  const [isLoading, setIsLoading] = React.useState(false);
+   440→  const [isPlaying, setIsPlaying] = React.useState(false);
+   441→  const audioRef = React.useRef<HTMLAudioElement | null>(null);
+   442→  const objectUrlRef = React.useRef<string | null>(null);
+   443→
+   444→  React.useEffect(() => {
+   445→    if (typeof window === "undefined") return;
+   446→    const audio = new Audio();
+   447→    audio.onended = () => setIsPlaying(false);
+   448→    audio.onerror = () => {
+   449→      setIsPlaying(false);
+   450→      toast.error("Lecture audio impossible", {
+   451→        description: "Le format audio n'a pas pu être lu par ton navigateur.",
+   452→      });
+   453→    };
+   454→    audioRef.current = audio;
+   455→
+   456→    return () => {
+   457→      try {
+   458→        audio.pause();
+   459→        audio.src = "";
+   460→      } catch {
+   461→        // ignore
+   462→      }
+   463→      if (objectUrlRef.current) {
+   464→        URL.revokeObjectURL(objectUrlRef.current);
+   465→        objectUrlRef.current = null;
+   466→      }
+   467→      audioRef.current = null;
+   468→    };
+   469→  }, []);
+   470→
+   471→  const handleSpeak = React.useCallback(async () => {
+   472→    const audio = audioRef.current;
+   473→    if (!audio) return;
+   474→
+   475→    // Si déjà en train de jouer → on arrête.
+   476→    if (isPlaying) {
+   477→      try {
+   478→        audio.pause();
+   479→        audio.currentTime = 0;
+   480→      } catch {
+   481→        // ignore
+   482→      }
+   483→      setIsPlaying(false);
+   484→      return;
+   485→    }
+   486→    if (isLoading) return;
+   487→
+   488→    setIsLoading(true);
+   489→    try {
+   490→      const res = await fetch("/api/chat/speak", {
+   491→        method: "POST",
+   492→        headers: { "Content-Type": "application/json" },
+   493→        body: JSON.stringify({ text, persona }),
+   494→      });
+   495→      if (!res.ok) {
+   496→        const err = await res.json().catch(() => ({}));
+   497→        throw new Error(err.error || `Erreur ${res.status}`);
+   498→      }
+   499→      const blob = await res.blob();
+   500→      if (blob.size === 0) {
+   501→        throw new Error("Audio vide reçu du serveur.");
+   502→      }
+   503→      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+   504→      const url = URL.createObjectURL(blob);
+   505→      objectUrlRef.current = url;
+   506→      audio.src = url;
+   507→      await audio.play();
+   508→      setIsPlaying(true);
+   509→    } catch (err) {
+   510→      const msg = err instanceof Error ? err.message : "Erreur inconnue";
+   511→      toast.error("Synthèse vocale impossible", { description: msg });
+   512→    } finally {
+   513→      setIsLoading(false);
+   514→    }
+   515→  }, [isPlaying, isLoading, text, persona]);
+   516→
+   517→  return (
+   518→    <button
+   519→      type="button"
+   520→      onClick={handleSpeak}
+   521→      disabled={isLoading}
+   522→      aria-label={
+   523→        isPlaying
+   524→          ? "Arrêter la lecture audio de la réponse"
+   525→          : "Écouter la réponse de Sankofa à voix haute"
+   526→      }
+   527→      title={isPlaying ? "Arrêter l'audio" : "Écouter — Sankofa te parle"}
+   528→      className="inline-flex items-center gap-1 text-[10px] text-ocre-rouge hover:text-terracotta font-medium transition-colors px-1.5 py-0.5 rounded hover:bg-ocre-rouge/10 disabled:opacity-50 disabled:cursor-wait"
+   529→    >
+   530→      {isLoading ? (
+   531→        <Loader2 className="size-3 animate-spin" />
+   532→      ) : isPlaying ? (
+   533→        <Square className="size-3 fill-current" />
+   534→      ) : (
+   535→        <Volume2 className="size-3" />
+   536→      )}
+   537→      {isPlaying ? "Stop" : "Écouter"}
+   538→    </button>
+   539→  );
+   540→}
+   541→
+   542→/**
+   543→ * FeedbackButtons — 👍/👎 sur une réponse assistant (V3 — boucle d'apprentissage).
+   544→ *
+   545→ * Envoie le vote à /api/chat/feedback avec contexte (persona, triage, émotion).
+   546→ * Un seul vote par message (désactive les deux boutons après clic).
+   547→ * Couleurs : vert-baobab (up), terracotta (down) — palette Sankofa.
+   548→ */
+   549→function FeedbackButtons({ msg, anonymousId }: { msg: ChatMessage; anonymousId: string }) {
+   550→  const [vote, setVote] = React.useState<"up" | "down" | null>(null);
+   551→  const [submitting, setSubmitting] = React.useState(false);
+   552→
+   553→  const handleVote = React.useCallback(
+   554→    async (thumb: "up" | "down") => {
+   555→      if (vote || submitting || !anonymousId) return;
+   556→      setSubmitting(true);
+   557→      try {
+   558→        const res = await fetch("/api/chat/feedback", {
+   559→          method: "POST",
+   560→          headers: { "Content-Type": "application/json" },
+   561→          body: JSON.stringify({
+   562→            anonymousId,
+   563→            messageTs: msg.ts,
+   564→            messageRole: "assistant",
+   565→            messagePreview: msg.content.slice(0, 100),
+   566→            thumb,
+   567→            triageLevel: msg.triageLevel,
+   568→            persona: msg.persona,
+   569→            emotion: msg.emotion,
+   570→          }),
+   571→        });
+   572→        if (!res.ok) {
+   573→          const err = await res.json().catch(() => ({}));
+   574→          throw new Error(err.error || `Erreur ${res.status}`);
+   575→        }
+   576→        setVote(thumb);
+   577→        toast.success("Merci ! Ton avis m'aide à m'améliorer.");
+   578→      } catch (err) {
+   579→        const errMsg = err instanceof Error ? err.message : "Erreur inconnue";
+   580→        toast.error("Impossible d'enregistrer ton vote", { description: errMsg });
+   581→      } finally {
+   582→        setSubmitting(false);
+   583→      }
+   584→    },
+   585→    [anonymousId, msg, submitting, vote],
+   586→  );
+   587→
+   588→  return (
+   589→    <div className="inline-flex items-center gap-0.5">
+   590→      <button
+   591→        type="button"
+   592→        onClick={() => handleVote("up")}
+   593→        disabled={!!vote || submitting}
+   594→        aria-label="Bonne réponse"
+   595→        aria-pressed={vote === "up"}
+   596→        title="Bonne réponse 👍"
+   597→        className={cn(
+   598→          "p-1 rounded transition-colors disabled:cursor-default",
+   599→          vote === "up"
+   600→            ? "bg-vert-baobab/15 text-vert-baobab"
+   601→            : "text-ocre-rouge hover:bg-vert-baobab/10 hover:text-vert-baobab",
+   602→        )}
+   603→      >
+   604→        <ThumbsUp className="size-3" />
+   605→      </button>
+   606→      <button
+   607→        type="button"
+   608→        onClick={() => handleVote("down")}
+   609→        disabled={!!vote || submitting}
+   610→        aria-label="Réponse à améliorer"
+   611→        aria-pressed={vote === "down"}
+   612→        title="Réponse à améliorer 👎"
+   613→        className={cn(
+   614→          "p-1 rounded transition-colors disabled:cursor-default",
+   615→          vote === "down"
+   616→            ? "bg-terracotta/15 text-terracotta"
+   617→            : "text-ocre-rouge hover:bg-terracotta/10 hover:text-terracotta",
+   618→        )}
+   619→      >
+   620→        <ThumbsDown className="size-3" />
+   621→      </button>
+   622→    </div>
+   623→  );
+   624→}
+   625→
+   626→/**
+   627→ * TransparencyPanel — "Pourquoi cette réponse ?" (V3 — transparence).
+   628→ *
+   629→ * Petit card affichant le persona, registre, triage, protocoles, émotion, TPE.
+   630→ * Vise à démystifier la chaîne de traitement pour l'utilisateur·rice.
+   631→ */
+   632→function TransparencyPanel({ msg }: { msg: ChatMessage }) {
+   633→  const personaName = msg.persona ? PERSONA_NAME[msg.persona] : "Aya";
+   634→  const protocols =
+   635→    msg.protocolsUsed && msg.protocolsUsed.length > 0
+   636→      ? msg.protocolsUsed.join(", ")
+   637→      : "Aucun";
+   638→  const emotionLabel = msg.emotion
+   639→    ? `${msg.emotion} (${Math.round((msg.emotionIntensity ?? 0) * 100)}%)`
+   640→    : "Non détectée";
+   641→  const triageLabel = msg.triageLevel ?? "info";
+   642→
+   643→  return (
+   644→    <div className="bg-creme-baobab/60 border border-ocre-rouge/15 rounded-lg p-3 text-xs text-ocre-rouge space-y-1 w-full">
+   645→      <p className="font-semibold text-ocre-rouge/80 mb-1.5">ℹ️ Pourquoi cette réponse ?</p>
+   646→      <div className="flex gap-2">
+   647→        <span className="font-semibold min-w-[110px] shrink-0">Persona</span>
+   648→        <span>{personaName}</span>
+   649→      </div>
+   650→      <div className="flex gap-2">
+   651→        <span className="font-semibold min-w-[110px] shrink-0">Registre</span>
+   652→        <span>{msg.register ?? "—"}</span>
+   653→      </div>
+   654→      <div className="flex gap-2">
+   655→        <span className="font-semibold min-w-[110px] shrink-0">Niveau triage</span>
+   656→        <span>{triageLabel}</span>
+   657→      </div>
+   658→      <div className="flex gap-2">
+   659→        <span className="font-semibold min-w-[110px] shrink-0">Protocoles utilisés</span>
+   660→        <span className="break-words">{protocols}</span>
+   661→      </div>
+   662→      <div className="flex gap-2">
+   663→        <span className="font-semibold min-w-[110px] shrink-0">Émotion détectée</span>
+   664→        <span>{emotionLabel}</span>
+   665→      </div>
+   666→      <div className="flex gap-2">
+   667→        <span className="font-semibold min-w-[110px] shrink-0">TPE</span>
+   668→        <span>{msg.tpeActivated ? "Oui" : "Non"}</span>
+   669→      </div>
+   670→    </div>
+   671→  );
+   672→}
+   673→
+   674→/**
+   675→ * PersonaSuggestionBanner — suggestion de switch de persona (V3).
+   676→ *
+   677→ * Affichée quand le backend détecte qu'un autre persona serait plus adapté.
+   678→ * L'utilisateur garde le choix final (pas d'auto-switch).
+   679→ */
+   680→function PersonaSuggestionBanner({
+   681→  recommendation,
+   682→  onSwitch,
+   683→  onDismiss,
+   684→}: {
+   685→  recommendation: NonNullable<ChatMessage["personaRecommendation"]>;
+   686→  onSwitch: (p: Persona) => void;
+   687→  onDismiss: () => void;
+   688→}) {
+   689→  const recommendedName =
+   690→    PERSONA_NAME[recommendation.recommended] ?? recommendation.recommended;
+   691→  return (
+   692→    <div className="bg-ambre-couchant/15 border border-ambre-couchant/30 rounded-lg p-2.5 text-xs flex items-center gap-2 text-ocre-rouge w-full">
+   693→      <span className="flex-1 leading-snug">{recommendation.reason}</span>
+   694→      <button
+   695→        type="button"
+   696→        onClick={() => onSwitch(recommendation.recommended)}
+   697→        aria-label={`Passer à ${recommendedName}`}
+   698→        title={`Passer à ${recommendedName}`}
+   699→        className="shrink-0 px-2 py-1 rounded bg-ambre-couchant/30 hover:bg-ambre-couchant/50 text-ocre-rouge font-medium transition-colors whitespace-nowrap"
+   700→      >
+   701→        Switch to {recommendedName}?
+   702→      </button>
+   703→      <button
+   704→        type="button"
+   705→        onClick={onDismiss}
+   706→        aria-label="Rejeter la suggestion de persona"
+   707→        title="Non merci"
+   708→        className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-ocre-rouge/10 text-ocre-rouge font-medium transition-colors whitespace-nowrap"
+   709→      >
+   710→        <X className="size-3" />
+   711→        <span className="hidden sm:inline">Non merci</span>
+   712→      </button>
+   713→    </div>
+   714→  );
+   715→}
+   716→
+   717→function MessageBubble({
+   718→  msg,
+   719→  onSaveToCarnet,
+   720→  anonymousId,
+   721→  onSwitchPersona,
+   722→}: {
+   723→  msg: ChatMessage;
+   724→  onSaveToCarnet?: (msg: ChatMessage) => void;
+   725→  anonymousId?: string;
+   726→  onSwitchPersona?: (p: Persona) => void;
+   727→}) {
+   728→  const isUser = msg.role === "user";
+   729→  const isCompanion = !!msg.companion && !isUser;
+   730→  const canSaveToCarnet =
+   731→    !isUser && onSaveToCarnet && !msg.id.startsWith("welcome-") && !msg.id.startsWith("switch-");
+   732→  // Le bouton "Écouter" (TTS) apparaît sur les bulles assistant réelles
+   733→  // (pas user, pas companion, pas welcome, pas switch, contenu non vide).
+   734→  const canSpeak =
+   735→    !isUser &&
+   736→    !isCompanion &&
+   737→    !msg.id.startsWith("welcome-") &&
+   738→    !msg.id.startsWith("switch-") &&
+   739→    msg.content.trim().length > 0;
+   740→  // V3 — Boutons feedback + transparence + suggestion de persona :
+   741→  // uniquement sur les vraies réponses assistant (pas welcome/switch/companion).
+   742→  const isAssistantReal =
+   743→    !isUser &&
+   744→    !isCompanion &&
+   745→    !msg.id.startsWith("welcome-") &&
+   746→    !msg.id.startsWith("switch-");
+   747→  const [showTransparency, setShowTransparency] = React.useState(false);
+   748→  const [personaSuggestionDismissed, setPersonaSuggestionDismissed] =
+   749→    React.useState(false);
+   750→  const showPersonaSuggestion =
+   751→    isAssistantReal &&
+   752→    !!msg.personaRecommendation?.shouldSuggest &&
+   753→    !personaSuggestionDismissed;
+   754→  return (
+   755→    <motion.div
+   756→      initial={{ opacity: 0, y: 8 }}
+   757→      animate={{ opacity: 1, y: 0 }}
+   758→      transition={{ duration: 0.2 }}
+   759→      className={cn("flex w-full gap-2", isUser ? "justify-end" : "justify-start")}
+   760→      aria-label={isCompanion ? "Message de compagnon de Sankofa" : undefined}
+   761→    >
+   762→      {!isUser && (
+   763→        <PersonaAvatar
+   764→          persona={msg.persona ?? "grande_soeur"}
+   765→          size={32}
+   766→          className="mt-0.5 border border-or-poudre-clair/30"
+   767→        />
+   768→      )}
+   769→      <div className={cn("flex flex-col max-w-[82%] sm:max-w-[75%] gap-1", isUser ? "items-end" : "items-start")}>
+   770→        {msg.triageLevel && msg.triageLevel !== "info" && !isUser && (
+   771→          <TriageBadge level={msg.triageLevel} />
+   772→        )}
+   773→        {msg.tpeActivated && !isUser && (
+   774→          <Badge className="bg-terracotta/20 border border-terracotta/40 text-ocre-rouge gap-1">
+   775→            ⏱️ TPE 72h activé
+   776→          </Badge>
+   777→        )}
+   778→        <div
+   779→          className={cn(
+   780→            "px-3.5 py-2.5 text-sm shadow-sm whitespace-pre-wrap break-words leading-relaxed",
+   781→            isUser
+   782→              ? "aya-bubble-user"
+   783→              : isCompanion
+   784→                ? "aya-bubble-companion border-l-4 border-l-terracotta"
+   785→                : "aya-bubble-assistant",
+   786→          )}
+   787→        >
+   788→          {msg.content}
+   789→        </div>
+   790→        {showPersonaSuggestion && msg.personaRecommendation && (
+   791→          <PersonaSuggestionBanner
+   792→            recommendation={msg.personaRecommendation}
+   793→            onSwitch={(p) => {
+   794→              onSwitchPersona?.(p);
+   795→              setPersonaSuggestionDismissed(true);
+   796→            }}
+   797→            onDismiss={() => setPersonaSuggestionDismissed(true)}
+   798→          />
+   799→        )}
+   800→        <div className={cn("flex items-center gap-2 flex-wrap", isUser ? "justify-end" : "justify-start")}>
+   801→          {isCompanion ? (
+   802→            <span className="text-[10px] text-ocre-rouge font-medium px-1">
+   803→              🌿 Compagnon
+   804→            </span>
+   805→          ) : msg.ts > 0 ? (
+   806→            <span
+   807→              suppressHydrationWarning
+   808→              className="text-[10px] text-text-on-light-muted px-1"
+   809→            >
+   810→              {formatTime(msg.ts)}
+   811→            </span>
+   812→          ) : null}
+   813→          {canSaveToCarnet && (
+   814→            <button
+   815→              type="button"
+   816→              onClick={() => onSaveToCarnet?.(msg)}
+   817→              className="inline-flex items-center gap-1 text-[10px] text-ocre-rouge hover:text-terracotta font-medium transition-colors px-1.5 py-0.5 rounded hover:bg-ocre-rouge/10"
+   818→              aria-label="Sauvegarder cette réponse dans le carnet chiffré"
+   819→              title="Sauver dans mon carnet chiffré"
+   820→            >
+   821→              <Lock className="size-3" />
+   822→              Sauver dans mon carnet
+   823→            </button>
+   824→          )}
+   825→          {canSpeak && (
+   826→            <SpeakButton text={msg.content} persona={msg.persona ?? "grande_soeur"} />
+   827→          )}
+   828→          {isAssistantReal && anonymousId && (
+   829→            <FeedbackButtons msg={msg} anonymousId={anonymousId} />
+   830→          )}
+   831→          {isAssistantReal && (
+   832→            <button
+   833→              type="button"
+   834→              onClick={() => setShowTransparency((v) => !v)}
+   835→              aria-label="Voir pourquoi cette réponse"
+   836→              aria-expanded={showTransparency}
+   837→              title="Pourquoi cette réponse ?"
+   838→              className={cn(
+   839→                "inline-flex items-center gap-1 text-[10px] font-medium transition-colors px-1.5 py-0.5 rounded",
+   840→                showTransparency
+   841→                  ? "bg-ocre-rouge/15 text-ocre-rouge"
+   842→                  : "text-ocre-rouge hover:bg-ocre-rouge/10",
+   843→              )}
+   844→            >
+   845→              <Info className="size-3" />
+   846→              <span className="hidden sm:inline">Pourquoi ?</span>
+   847→            </button>
+   848→          )}
+   849→        </div>
+   850→        {isAssistantReal && showTransparency && (
+   851→          <TransparencyPanel msg={msg} />
+   852→        )}
+   853→      </div>
+   854→    </motion.div>
+   855→  );
+   856→}
+   857→
+   858→function TypingIndicator({ persona }: { persona: Persona }) {
+   859→  return (
+   860→    <motion.div
+   861→      initial={{ opacity: 0, y: 8 }}
+   862→      animate={{ opacity: 1, y: 0 }}
+   863→      exit={{ opacity: 0 }}
+   864→      className="flex gap-2 justify-start"
+   865→    >
+   866→      <PersonaAvatar
+   867→        persona={persona}
+   868→        size={32}
+   869→        className="mt-0.5 border border-or-poudre-clair/30"
+   870→      />
+   871→      <div className="aya-bubble-assistant px-4 py-3 flex items-center gap-1.5">
+   872→        <span className="aya-typing-dot size-2 rounded-full bg-text-on-dark/80 inline-block" />
+   873→        <span className="aya-typing-dot size-2 rounded-full bg-text-on-dark/80 inline-block" />
+   874→        <span className="aya-typing-dot size-2 rounded-full bg-text-on-dark/80 inline-block" />
+   875→        <span className="sr-only">Sankofa écrit...</span>
+   876→      </div>
+   877→    </motion.div>
+   878→  );
+   879→}
+   880→
+   881→interface ChatProps {
+   882→  className?: string;
+   883→  onSaveToCarnet?: (msg: ChatMessage) => void;
+   884→  /** Question pré-remplie depuis l'onglet Coach (ex: "En savoir plus →") */
+   885→  pendingQuestion?: string | null;
+   886→  /** Appelé quand pendingQuestion a été consommée (injectée dans l'input) */
+   887→  onPendingQuestionConsumed?: () => void;
+   888→  /** Callback scroll pour auto-hide nav Instagram-style (mobile only) */
+   889→  onScrollNavToggle?: (e: React.UIEvent<HTMLElement>) => void;
+   890→}
+   891→
+   892→export function Chat({
+   893→  className,
+   894→  onSaveToCarnet,
+   895→  pendingQuestion,
+   896→  onPendingQuestionConsumed,
+   897→  onScrollNavToggle,
+   898→}: ChatProps) {
+   899→  const [messages, setMessages] = React.useState<ChatMessage[]>([WELCOME_MESSAGE]);
+   900→  const [input, setInput] = React.useState("");
+   901→  const [isTyping, setIsTyping] = React.useState(false);
+   902→  const [anonymousId, setAnonymousId] = React.useState<string>("");
+   903→  const [persona, setPersona] = React.useState<Persona>("grande_soeur");
+   904→  const [companionMode, setCompanionMode] = React.useState<CompanionState>(
+   905→    INITIAL_COMPANION_STATE,
+   906→  );
+   907→  // === Audio (ASR/TTS) ===
+   908→  // `mounted` permet de ne rendre le bouton micro qu'après hydratation
+   909→  // (MediaRecorder n'existe pas côté serveur).
+   910→  const [mounted, setMounted] = React.useState(false);
+   911→  const [isRecording, setIsRecording] = React.useState(false);
+   912→  const [isTranscribing, setIsTranscribing] = React.useState(false);
+   913→  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+   914→  const audioChunksRef = React.useRef<Blob[]>([]);
+   915→  const recordingStreamRef = React.useRef<MediaStream | null>(null);
+   916→  // Authentification optionnelle (Task 12). Session reste "loading" au premier render
+   917→  // (server) puis résout vers "authenticated" | "unauthenticated" côté client.
+   918→  // Pas d'impact sur l'anonymat — si non authentifié, on envoie simplement userId=null.
+   919→  const { data: session, status: sessionStatus } = useSession();
+   920→  const userId = React.useMemo(
+   921→    () => (sessionStatus === "authenticated" ? (session?.user as { id?: string } | undefined)?.id ?? null : null),
+   922→    [session, sessionStatus],
+   923→  );
+   924→
+   925→  const scrollRef = React.useRef<HTMLDivElement>(null);
+   926→  const inputRef = React.useRef<HTMLInputElement>(null);
+   927→  const bottomRef = React.useRef<HTMLDivElement>(null);
+   928→
+   929→  // Ref miroir de l'état compagnon pour les callbacks d'interval (évite les stale closures)
+   930→  const companionRef = React.useRef<CompanionState>(companionMode);
+   931→  React.useEffect(() => {
+   932→    companionRef.current = companionMode;
+   933→  }, [companionMode]);
+   934→
+   935→  // === Audio : hydratation + cleanup du MediaRecorder ===
+   936→  // `mounted` passe à true côté client après hydratation → le bouton micro
+   937→  // devient actif. SSR et premier render client sont identiques (bouton désactivé)
+   938→  // donc pas de mismatch d'hydratation.
+   939→  React.useEffect(() => {
+   940→    setMounted(true);
+   941→  }, []);
+   942→
+   943→  // Cleanup en démontage : on arrête proprement le recorder et les tracks du
+   944→  // microphone pour éviter un voyant "micro actif" orphelin dans le navigateur.
+   945→  React.useEffect(() => {
+   946→    return () => {
+   947→      try {
+   948→        const recorder = mediaRecorderRef.current;
+   949→        if (recorder && recorder.state !== "inactive") {
+   950→          recorder.stop();
+   951→        }
+   952→      } catch {
+   953→        // ignore
+   954→      }
+   955→      recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+   956→      recordingStreamRef.current = null;
+   957→    };
+   958→  }, []);
+   959→
+   960→  /**
+   961→   * Démarre l'enregistrement audio via MediaRecorder (webm/opus de préférence,
+   962→   * fallback ogg/opus, fallback navigateur par défaut).
+   963→   *
+   964→   * On ne demande la permission qu'au clic — pas de prompt au chargement de page
+   965→   * (meilleur UX, évite le rejet automatique).
+   966→   */
+   967→  const startRecording = React.useCallback(async () => {
+   968→    if (typeof window === "undefined") return;
+   969→    if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== "function") {
+   970→      toast.error("Microphone non disponible", {
+   971→        description: "Ton navigateur ne supporte pas l'enregistrement audio.",
+   972→      });
+   973→      return;
+   974→    }
+   975→    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+   976→      // Déjà en train d'enregistrer — on ignore.
+   977→      return;
+   978→    }
+   979→
+   980→    let stream: MediaStream;
+   981→    try {
+   982→      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+   983→    } catch (err) {
+   984→      if (err instanceof DOMException && err.name === "NotAllowedError") {
+   985→        toast.error("Microphone non disponible", {
+   986→          description:
+   987→            "Tu dois autoriser l'accès au micro dans ton navigateur (icône cadenas à côté de l'URL).",
+   988→        });
+   989→      } else if (err instanceof DOMException && err.name === "NotFoundError") {
+   990→        toast.error("Aucun microphone détecté", {
+   991→          description: "Branche un micro ou un casque avec micro et réessaie.",
+   992→        });
+   993→      } else {
+   994→        const msg = err instanceof Error ? err.message : "Erreur inconnue";
+   995→        toast.error("Microphone non disponible", { description: msg });
+   996→      }
+   997→      return;
+   998→    }
+   999→
+  1000→    recordingStreamRef.current = stream;
+  1001→
+  1002→    // Choisit le meilleur mime type supporté par ce navigateur.
+  1003→    const candidates = [
+  1004→      "audio/webm;codecs=opus",
+  1005→      "audio/webm",
+  1006→      "audio/ogg;codecs=opus",
+  1007→      "audio/ogg",
+  1008→    ];
+  1009→    const mimeType =
+  1010→      candidates.find((c) =>
+  1011→        typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c),
+  1012→      ) || "";
+  1013→
+  1014→    let recorder: MediaRecorder;
+  1015→    try {
+  1016→      recorder = mimeType
+  1017→        ? new MediaRecorder(stream, { mimeType })
+  1018→        : new MediaRecorder(stream);
+  1019→    } catch (err) {
+  1020→      const msg = err instanceof Error ? err.message : "MediaRecorder indisponible";
+  1021→      toast.error("Microphone non disponible", { description: msg });
+  1022→      recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+  1023→      recordingStreamRef.current = null;
+  1024→      return;
+  1025→    }
+  1026→
+  1027→    audioChunksRef.current = [];
+  1028→
+  1029→    recorder.ondataavailable = (e: BlobEvent) => {
+  1030→      if (e.data && e.data.size > 0) {
+  1031→        audioChunksRef.current.push(e.data);
+  1032→      }
+  1033→    };
+  1034→
+  1035→    recorder.onstop = async () => {
+  1036→      // Libère le micro immédiatement (avant la transcription réseau).
+  1037→      recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+  1038→      recordingStreamRef.current = null;
+  1039→
+  1040→      const audioBlob = new Blob(audioChunksRef.current, {
+  1041→        type: recorder.mimeType || "audio/webm",
+  1042→      });
+  1043→      audioChunksRef.current = [];
+  1044→
+  1045→      if (audioBlob.size === 0) {
+  1046→        toast.error("Enregistrement vide", {
+  1047→          description: "Aucun son n'a été capturé. Réessaie en parlant plus près du micro.",
+  1048→        });
+  1049→        return;
+  1050→      }
+  1051→
+  1052→      setIsTranscribing(true);
+  1053→      try {
+  1054→        const formData = new FormData();
+  1055→        const ext = (recorder.mimeType || "audio/webm").includes("ogg")
+  1056→          ? "ogg"
+  1057→          : "webm";
+  1058→        formData.append("audio", audioBlob, `recording.${ext}`);
+  1059→
+  1060→        const res = await fetch("/api/chat/transcribe", {
+  1061→          method: "POST",
+  1062→          body: formData,
+  1063→        });
+  1064→        if (!res.ok) {
+  1065→          const err = await res.json().catch(() => ({}));
+  1066→          throw new Error(err.error || `Erreur ${res.status}`);
+  1067→        }
+  1068→        const data = (await res.json()) as { text: string };
+  1069→        const text = (data.text || "").trim();
+  1070→
+  1071→        if (!text) {
+  1072→          toast.error("Je n'ai pas compris l'audio", {
+  1073→            description:
+  1074→              "Parle plus clairement, dans un endroit calme, et évite le bruit de fond.",
+  1075→          });
+  1076→          return;
+  1077→        }
+  1078→
+  1079→        // On remplit l'input SANS auto-envoyer : l'utilisateur·rice vérifie
+  1080→        // la transcription avant de cliquer sur Envoyer (sécurité + contrôle).
+  1081→        setInput((prev) => {
+  1082→          const trimmed = prev.trim();
+  1083→          return trimmed ? `${trimmed} ${text}` : text;
+  1084→        });
+  1085→        toast.success("Audio transcrit 👍", {
+  1086→          description: "Vérifie le texte avant d'envoyer.",
+  1087→        });
+  1088→        inputRef.current?.focus();
+  1089→      } catch (err) {
+  1090→        const msg = err instanceof Error ? err.message : "Erreur inconnue";
+  1091→        toast.error("Transcription impossible", { description: msg });
+  1092→      } finally {
+  1093→        setIsTranscribing(false);
+  1094→      }
+  1095→    };
+  1096→
+  1097→    recorder.onerror = () => {
+  1098→      toast.error("Erreur d'enregistrement", {
+  1099→        description: "Le micro a rencontré un problème. Réessaie.",
+  1100→      });
+  1101→      setIsRecording(false);
+  1102→      recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+  1103→      recordingStreamRef.current = null;
+  1104→    };
+  1105→
+  1106→    try {
+  1107→      recorder.start();
+  1108→    } catch (err) {
+  1109→      const msg = err instanceof Error ? err.message : "Impossible de démarrer le micro";
+  1110→      toast.error("Microphone non disponible", { description: msg });
+  1111→      recordingStreamRef.current?.getTracks().forEach((t) => t.stop());
+  1112→      recordingStreamRef.current = null;
+  1113→      return;
+  1114→    }
+  1115→
+  1116→    mediaRecorderRef.current = recorder;
+  1117→    setIsRecording(true);
+  1118→  }, []);
+  1119→
+  1120→  /** Arrête l'enregistrement — déclenche onstop (transcription) via MediaRecorder. */
+  1121→  const stopRecording = React.useCallback(() => {
+  1122→    const recorder = mediaRecorderRef.current;
+  1123→    if (!recorder || recorder.state === "inactive") {
+  1124→      setIsRecording(false);
+  1125→      return;
+  1126→    }
+  1127→    try {
+  1128→      recorder.stop();
+  1129→    } catch {
+  1130→      // ignore — on force le reset visuel
+  1131→    }
+  1132→    setIsRecording(false);
+  1133→  }, []);
+  1134→
+  1135→  /** Ajoute un message compagnon (check-in / quick action) — pré-écrit, sans LLM. */
+  1136→  const sendCompanionMessage = React.useCallback(
+  1137→    (content: string, personaOverride?: Persona) => {
+  1138→      if (!content) return;
+  1139→      const msg: ChatMessage = {
+  1140→        id: `companion-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  1141→        role: "assistant",
+  1142→        content,
+  1143→        ts: Date.now(),
+  1144→        persona: personaOverride,
+  1145→        companion: true,
+  1146→      };
+  1147→      setMessages((prev) => [...prev, msg]);
+  1148→    },
+  1149→    [],
+  1150→  );
+  1151→
+  1152→  /** Active le mode compagnon (ne fait rien si déjà actif). */
+  1153→  const activateCompanion = React.useCallback(
+  1154→    (
+  1155→      trigger: "tpe" | "red_flag" | "manual",
+  1156→      redFlagTopic?: RedFlagTopic,
+  1157→      personaOverride?: Persona,
+  1158→    ) => {
+  1159→      let activated = false;
+  1160→      setCompanionMode((prev) => {
+  1161→        if (prev.active) return prev;
+  1162→        activated = true;
+  1163→        const now = Date.now();
+  1164→        const newState: CompanionState = {
+  1165→          active: true,
+  1166→          startedAt: now,
+  1167→          trigger,
+  1168→          redFlagTopic,
+  1169→          stage: "departing",
+  1170→          lastCheckIn: now,
+  1171→          checkInCount: 1, // le message d'activation compte comme check-in 1
+  1172→        };
+  1173→        return newState;
+  1174→      });
+  1175→      if (activated) {
+  1176→        const msg = getCheckInMessage(trigger, redFlagTopic, 0);
+  1177→        sendCompanionMessage(msg, personaOverride);
+  1178→      }
+  1179→    },
+  1180→    [sendCompanionMessage],
+  1181→  );
+  1182→
+  1183→  /** Réinitialise le compteur de check-ins (utilisateur·rice engagé·e). */
+  1184→  const resetCheckInTimer = React.useCallback(() => {
+  1185→    setCompanionMode((prev) => {
+  1186→      if (!prev.active) return prev;
+  1187→      return {
+  1188→        ...prev,
+  1189→        checkInCount: 0,
+  1190→        lastCheckIn: Date.now(),
+  1191→      };
+  1192→    });
+  1193→  }, []);
+  1194→
+  1195→  /** Gère les 4 quick actions du mode compagnon. */
+  1196→  const handleQuickAction = React.useCallback(
+  1197→    (actionId: CompanionQuickAction["id"]) => {
+  1198→      const current = companionRef.current;
+  1199→      if (!current.active) return;
+  1200→      const response = getQuickActionResponse(actionId);
+  1201→      sendCompanionMessage(response);
+  1202→
+  1203→      switch (actionId) {
+  1204→        case "en_route":
+  1205→          setCompanionMode((prev) => ({
+  1206→            ...prev,
+  1207→            stage: "in_transit",
+  1208→            checkInCount: 0,
+  1209→            lastCheckIn: Date.now(),
+  1210→          }));
+  1211→          break;
+  1212→        case "parler":
+  1213→          resetCheckInTimer();
+  1214→          break;
+  1215→        case "arrived": {
+  1216→          // Offre de sauvegarder la consultation dans le carnet chiffré
+  1217→          if (onSaveToCarnet) {
+  1218→            const triggerLabel = getTriggerLabel(current);
+  1219→            const dateStr = new Date().toLocaleString("fr-FR", {
+  1220→              dateStyle: "short",
+  1221→              timeStyle: "short",
+  1222→            });
+  1223→            const syntheticMsg: ChatMessage = {
+  1224→              id: `companion-save-${Date.now()}`,
+  1225→              role: "assistant",
+  1226→              content: `Consultation terminée — ${triggerLabel}. Arrivé·e à la structure le ${dateStr}.`,
+  1227→              ts: Date.now(),
+  1228→              persona,
+  1229→              companion: true,
+  1230→            };
+  1231→            onSaveToCarnet(syntheticMsg);
+  1232→          }
+  1233→          // Transition vers « completed » → bannière change, puis fade après 5s
+  1234→          setCompanionMode((prev) => ({ ...prev, stage: "completed" }));
+  1235→          window.setTimeout(() => {
+  1236→            setCompanionMode((prev) => ({ ...prev, active: false }));
+  1237→          }, 5000);
+  1238→          break;
+  1239→        }
+  1240→        case "stop":
+  1241→          setCompanionMode((prev) => ({
+  1242→            ...prev,
+  1243→            stage: "cancelled",
+  1244→            active: false,
+  1245→          }));
+  1246→          break;
+  1247→      }
+  1248→    },
+  1249→    [onSaveToCarnet, persona, resetCheckInTimer, sendCompanionMessage],
+  1250→  );
+  1251→
+  1252→  /** Fermeture de la bannière (X) — demande confirmation. */
+  1253→  const handleDismissCompanion = React.useCallback(() => {
+  1254→    if (typeof window !== "undefined") {
+  1255→      const ok = window.confirm(
+  1256→        "Arrêter le mode compagnon ? Sankofa ne t'enverra plus de check-ins, mais restera disponible si tu as besoin.",
+  1257→      );
+  1258→      if (!ok) return;
+  1259→    }
+  1260→    const stopMsg = getQuickActionResponse("stop");
+  1261→    sendCompanionMessage(stopMsg);
+  1262→    setCompanionMode((prev) => ({
+  1263→      ...prev,
+  1264→      stage: "cancelled",
+  1265→      active: false,
+  1266→    }));
+  1267→  }, [sendCompanionMessage]);
+  1268→
+  1269→  // Init: load history + anonymous ID + persona + companion state (client-only)
+  1270→  React.useEffect(() => {
+  1271→    const loadedPersona = loadPersona();
+  1272→    setPersona(loadedPersona);
+  1273→    setAnonymousId(getAnonymousId());
+  1274→    const loadedMessages = loadHistory(loadedPersona);
+  1275→    setMessages(loadedMessages);
+  1276→
+  1277→    // Charge l'état compagnon persisté (survit aux rechargements)
+  1278→    const loadedCompanion = loadCompanionState();
+  1279→    if (loadedCompanion) {
+  1280→      setCompanionMode(loadedCompanion);
+  1281→      if (loadedCompanion.stage === "completed") {
+  1282→        // La bannière « terminé » est encore visible, on programme le fade
+  1283→        window.setTimeout(() => {
+  1284→          setCompanionMode((prev) => ({ ...prev, active: false }));
+  1285→        }, 5000);
+  1286→      } else if (loadedCompanion.stage === "cancelled") {
+  1287→        // Déjà annulé — on désactive proprement
+  1288→        setCompanionMode((prev) => ({ ...prev, active: false }));
+  1289→      } else {
+  1290→        // Mode compagnon toujours actif → message de retour
+  1291→        // (reset du timer pour éviter le spam de check-ins au retour)
+  1292→        setCompanionMode((prev) => ({
+  1293→          ...prev,
+  1294→          lastCheckIn: Date.now(),
+  1295→        }));
+  1296→        const lastMsg = loadedMessages[loadedMessages.length - 1];
+  1297→        if (!lastMsg || lastMsg.content !== COMPANION_RESUME_MESSAGE) {
+  1298→          sendCompanionMessage(COMPANION_RESUME_MESSAGE, loadedPersona);
+  1299→        }
+  1300→      }
+  1301→    }
+  1302→  }, [sendCompanionMessage]);
+  1303→
+  1304→  React.useEffect(() => {
+  1305→    if (bottomRef.current) {
+  1306→      bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+  1307→    }
+  1308→  }, [messages, isTyping]);
+  1309→
+  1310→  React.useEffect(() => {
+  1311→    if (anonymousId) saveHistory(messages);
+  1312→  }, [messages, anonymousId]);
+  1313→
+  1314→  // Persiste l'état compagnon dans localStorage à chaque changement
+  1315→  React.useEffect(() => {
+  1316→    saveCompanionState(companionMode);
+  1317→  }, [companionMode]);
+  1318→
+  1319→  // Check-in interval — envoie le prochain check-in toutes les 45s (démo)
+  1320→  // ou auto-annule après 5 check-ins sans réponse.
+  1321→  React.useEffect(() => {
+  1322→    if (!companionMode.active) return;
+  1323→    if (companionMode.stage === "completed" || companionMode.stage === "cancelled") return;
+  1324→
+  1325→    const interval = window.setInterval(() => {
+  1326→      const current = companionRef.current;
+  1327→      if (!current.active || current.stage === "completed" || current.stage === "cancelled") return;
+  1328→
+  1329→      if (current.checkInCount >= COMPANION_MAX_CHECK_INS) {
+  1330→        // Auto-annulation : 5 check-ins sans réponse
+  1331→        sendCompanionMessage(COMPANION_AUTO_CANCEL_MESSAGE);
+  1332→        setCompanionMode((prev) => ({
+  1333→          ...prev,
+  1334→          stage: "cancelled",
+  1335→          active: false,
+  1336→        }));
+  1337→        return;
+  1338→      }
+  1339→
+  1340→      const msg = getCheckInMessage(
+  1341→        current.trigger,
+  1342→        current.redFlagTopic,
+  1343→        current.checkInCount,
+  1344→      );
+  1345→      sendCompanionMessage(msg);
+  1346→      setCompanionMode((prev) => ({
+  1347→        ...prev,
+  1348→        checkInCount: prev.checkInCount + 1,
+  1349→        lastCheckIn: Date.now(),
+  1350→      }));
+  1351→    }, COMPANION_CHECK_IN_INTERVAL_MS);
+  1352→
+  1353→    return () => window.clearInterval(interval);
+  1354→  }, [companionMode.active, companionMode.stage, sendCompanionMessage]);
+  1355→
+  1356→  const handlePersonaChange = (p: Persona) => {
+  1357→    if (p === persona) return;
+  1358→    setPersona(p);
+  1359→    if (typeof window !== "undefined") {
+  1360→      try {
+  1361→        window.localStorage.setItem(PERSONA_KEY, p);
+  1362→      } catch {
+  1363→        // ignore
+  1364→      }
+  1365→    }
+  1366→
+  1367→    // Si on n'a QUE le message d'accueil → on remplace simplement par le nouveau welcome
+  1368→    setMessages((prev) => {
+  1369→      const onlyWelcome =
+  1370→        prev.length === 1 &&
+  1371→        typeof prev[0].id === "string" &&
+  1372→        prev[0].id.startsWith("welcome-");
+  1373→      if (onlyWelcome) {
+  1374→        return [buildWelcomeMessage(p)];
+  1375→      }
+  1376→      // Sinon : on ajoute un message système annonçant le changement de persona
+  1377→      const newMeta = PERSONAS.find((x) => x.id === p);
+  1378→      const switchMsg: ChatMessage = {
+  1379→        id: `switch-${Date.now()}`,
+  1380→        role: "assistant",
+  1381→        content:
+  1382→          `(Changement de persona — tu parles maintenant à ${newMeta?.name ?? "Aya"}.)`,
+  1383→        ts: Date.now(),
+  1384→        persona: p,
+  1385→      };
+  1386→      return [...prev, switchMsg];
+  1387→    });
+  1388→  };
+  1389→
+  1390→  const sendMessage = React.useCallback(
+  1391→    async (text: string) => {
+  1392→      const trimmed = text.trim();
+  1393→      if (!trimmed || isTyping || !anonymousId) return;
+  1394→
+  1395→      const userMsg: ChatMessage = {
+  1396→        id: `u-${Date.now()}`,
+  1397→        role: "user",
+  1398→        content: trimmed,
+  1399→        ts: Date.now(),
+  1400→      };
+  1401→      const historyForApi = messages
+  1402→        .filter((m) => !m.id.startsWith("welcome-") && !m.id.startsWith("switch-"))
+  1403→        .slice(-10)
+  1404→        .map((m) => ({ role: m.role, content: m.content }));
+  1405→
+  1406→      setMessages((prev) => [...prev, userMsg]);
+  1407→      setInput("");
+  1408→      setIsTyping(true);
+  1409→      playSendSound();
+  1410→
+  1411→      // === Helper : fallback non-streaming vers /api/chat ===
+  1412→      // Utilisé si /api/chat/stream retourne non-200, tombe en erreur réseau,
+  1413→      // ou se termine sans aucun token (connexion coupée).
+  1414→      const fallbackToNonStream = async (): Promise<void> => {
+  1415→        const res = await fetch("/api/chat", {
+  1416→          method: "POST",
+  1417→          headers: { "Content-Type": "application/json" },
+  1418→          body: JSON.stringify({
+  1419→            message: trimmed,
+  1420→            history: historyForApi,
+  1421→            anonymousId,
+  1422→            persona,
+  1423→            userId, // optionnel — null si utilisateur anonyme
+  1424→          }),
+  1425→        });
+  1426→        if (!res.ok) {
+  1427→          const err = await res.json().catch(() => ({}));
+  1428→          throw new Error(err.error || `Erreur ${res.status}`);
+  1429→        }
+  1430→        const data = (await res.json()) as ChatResponse;
+  1431→        const assistantMsg: ChatMessage = {
+  1432→          id: `a-${Date.now()}`,
+  1433→          role: "assistant",
+  1434→          content: data.reply,
+  1435→          ts: Date.now(),
+  1436→          triageLevel: data.triageLevel,
+  1437→          tpeActivated: data.tpeActivated,
+  1438→          protocolUsed: data.protocolUsed,
+  1439→          persona: data.persona,
+  1440→          // V3 — transparence + émotion + recommandation de persona
+  1441→          emotion: data.emotion,
+  1442→          emotionIntensity: data.emotionIntensity,
+  1443→          needsEmotionalCheckIn: data.needsEmotionalCheckIn,
+  1444→          personaRecommendation: data.personaRecommendation,
+  1445→          protocolsUsed: data.protocolsUsed,
+  1446→          register: data.register,
+  1447→        };
+  1448→        setMessages((prev) => [...prev, assistantMsg]);
+  1449→        playReceiveSound();
+  1450→
+  1451→        // === Activation du mode compagnon ===
+  1452→        // Déclenché par TPE OU red flag — Aya reste avec l'utilisateur·rice
+  1453→        // pendant son trajet vers la structure.
+  1454→        if (data.tpeActivated) {
+  1455→          activateCompanion("tpe", undefined, data.persona);
+  1456→        } else if (data.redFlagTopic) {
+  1457→          activateCompanion("red_flag", data.redFlagTopic as RedFlagTopic, data.persona);
+  1458→        }
+  1459→
+  1460→        if (data.redFlagTopic) {
+  1461→          toast.warning("Sujet sensible détecté", {
+  1462→            description:
+  1463→              "On t'a orienté·e vers une structure adaptée. Tu n'es pas seul·e.",
+  1464→          });
+  1465→        }
+  1466→        if (data.tpeActivated) {
+  1467→          toast.info("⏱️ Fenêtre TPE 72h détectée", {
+  1468→            description: "Sankofa reste avec toi — mode compagnon actif.",
+  1469→          });
+  1470→        }
+  1471→      };
+  1472→
+  1473→      // === Helper : active le mode compagnon selon le meta reçu du stream ===
+  1474→      const triggerCompanionFromMeta = (meta: StreamMeta): void => {
+  1475→        if (meta.tpeActivated) {
+  1476→          activateCompanion("tpe", undefined, meta.persona);
+  1477→          toast.info("⏱️ Fenêtre TPE 72h détectée", {
+  1478→            description: "Sankofa reste avec toi — mode compagnon actif.",
+  1479→          });
+  1480→        } else if (meta.redFlagTopic) {
+  1481→          activateCompanion("red_flag", meta.redFlagTopic, meta.persona);
+  1482→          toast.warning("Sujet sensible détecté", {
+  1483→            description:
+  1484→              "On t'a orienté·e vers une structure adaptée. Tu n'es pas seul·e.",
+  1485→          });
+  1486→        }
+  1487→      };
+  1488→
+  1489→      try {
+  1490→        // === Streaming path : POST /api/chat/stream (SSE) ===
+  1491→        const streamRes = await fetch("/api/chat/stream", {
+  1492→          method: "POST",
+  1493→          headers: {
+  1494→            "Content-Type": "application/json",
+  1495→            Accept: "text/event-stream",
+  1496→          },
+  1497→          body: JSON.stringify({
+  1498→            message: trimmed,
+  1499→            history: historyForApi,
+  1500→            anonymousId,
+  1501→            persona,
+  1502→            userId,
+  1503→          }),
+  1504→        });
+  1505→
+  1506→        // Non-200 ou pas de body → fallback vers /api/chat (non-streaming)
+  1507→        if (!streamRes.ok || !streamRes.body) {
+  1508→          console.warn(
+  1509→            `[Chat] Stream non-200 (status=${streamRes.status}), fallback vers /api/chat`,
+  1510→          );
+  1511→          await fallbackToNonStream();
+  1512→          return;
+  1513→        }
+  1514→
+  1515→        // Placeholder assistant message — mis à jour au fur et à mesure des tokens
+  1516→        const assistantMsgId = `a-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  1517→        setMessages((prev) => [
+  1518→          ...prev,
+  1519→          {
+  1520→            id: assistantMsgId,
+  1521→            role: "assistant" as const,
+  1522→            content: "",
+  1523→            ts: Date.now(),
+  1524→            persona,
+  1525→          },
+  1526→        ]);
+  1527→
+  1528→        const updateAssistant = (patch: Partial<ChatMessage>): void => {
+  1529→          setMessages((prev) =>
+  1530→            prev.map((m) =>
+  1531→              m.id === assistantMsgId ? { ...m, ...patch } : m,
+  1532→            ),
+  1533→          );
+  1534→        };
+  1535→
+  1536→        const reader = streamRes.body.getReader();
+  1537→        const decoder = new TextDecoder();
+  1538→        let buffer = "";
+  1539→        let fullContent = "";
+  1540→        let firstDeltaReceived = false;
+  1541→        let streamError = false;
+  1542→        let metaReceived: StreamMeta | null = null;
+  1543→
+  1544→        // Boucle de lecture SSE — découpe sur double newline (frontière d'événement)
+  1545→        while (true) {
+  1546→          const { done, value } = await reader.read();
+  1547→          if (done) break;
+  1548→
+  1549→          buffer += decoder.decode(value, { stream: true });
+  1550→          const events = buffer.split("\n\n");
+  1551→          buffer = events.pop() || ""; // garde le chunk incomplet pour le prochain tour
+  1552→
+  1553→          for (const event of events) {
+  1554→            const line = event.trim();
+  1555→            if (!line.startsWith("data:")) continue;
+  1556→            const jsonStr = line.slice(5).trim();
+  1557→            if (!jsonStr) continue;
+  1558→
+  1559→            let data: { type: string; [key: string]: unknown };
+  1560→            try {
+  1561→              data = JSON.parse(jsonStr);
+  1562→            } catch {
+  1563→              continue;
+  1564→            }
+  1565→
+  1566→            if (data.type === "meta") {
+  1567→              // Métadonnées envoyées AVANT le stream de tokens
+  1568→              metaReceived = {
+  1569→                triageLevel:
+  1570→                  (data.triageLevel as StreamMeta["triageLevel"]) ?? null,
+  1571→                persona:
+  1572→                  (data.persona as Persona) ?? persona,
+  1573→                register: data.register as StreamMeta["register"],
+  1574→                emotion: data.emotion as StreamMeta["emotion"],
+  1575→                emotionIntensity: data.emotionIntensity as number | undefined,
+  1576→                needsEmotionalCheckIn: data.needsEmotionalCheckIn as
+  1577→                  | boolean
+  1578→                  | undefined,
+  1579→                tpeActivated: data.tpeActivated as boolean | undefined,
+  1580→                protocolUsed: data.protocolUsed as string | null | undefined,
+  1581→                protocolsUsed: data.protocolsUsed as string[] | undefined,
+  1582→                personaRecommendation: data.personaRecommendation as
+  1583→                  | StreamMeta["personaRecommendation"]
+  1584→                  | undefined,
+  1585→                redFlagTopic: data.redFlagTopic as RedFlagTopic | undefined,
+  1586→              };
+  1587→              updateAssistant({
+  1588→                persona: metaReceived.persona,
+  1589→                triageLevel: metaReceived.triageLevel ?? undefined,
+  1590→                register: metaReceived.register,
+  1591→                emotion: metaReceived.emotion,
+  1592→                emotionIntensity: metaReceived.emotionIntensity,
+  1593→                needsEmotionalCheckIn: metaReceived.needsEmotionalCheckIn,
+  1594→                tpeActivated: metaReceived.tpeActivated,
+  1595→                protocolUsed: metaReceived.protocolUsed ?? undefined,
+  1596→                protocolsUsed: metaReceived.protocolsUsed,
+  1597→                personaRecommendation: metaReceived.personaRecommendation,
+  1598→              });
+  1599→            } else if (data.type === "delta") {
+  1600→              // Token增量 — append au contenu de la bulle
+  1601→              if (!firstDeltaReceived) {
+  1602→                firstDeltaReceived = true;
+  1603→                setIsTyping(false); // la bulle elle-même montre le texte qui arrive
+  1604→                playReceiveSound();
+  1605→              }
+  1606→              fullContent += (data.content as string) ?? "";
+  1607→              updateAssistant({ content: fullContent });
+  1608→            } else if (data.type === "replace") {
+  1609→              // Remplace TOUT le contenu (post-check safety a bloqué → fallback)
+  1610→              if (!firstDeltaReceived) {
+  1611→                firstDeltaReceived = true;
+  1612→                setIsTyping(false);
+  1613→                playReceiveSound();
+  1614→              }
+  1615→              fullContent = (data.content as string) ?? "";
+  1616→              updateAssistant({ content: fullContent });
+  1617→            } else if (data.type === "done") {
+  1618→              // Stream terminé — triage final connu
+  1619→              const finalTriage = data.triageLevel as
+  1620→                | "info"
+  1621→                | "orientation"
+  1622→                | "urgence";
+  1623→              if (
+  1624→                typeof data.fullContent === "string" &&
+  1625→                data.fullContent !== fullContent
+  1626→              ) {
+  1627→                fullContent = data.fullContent;
+  1628→                updateAssistant({ content: fullContent });
+  1629→              }
+  1630→              updateAssistant({ triageLevel: finalTriage });
+  1631→
+  1632→              if (metaReceived) {
+  1633→                triggerCompanionFromMeta(metaReceived);
+  1634→              }
+  1635→            } else if (data.type === "error") {
+  1636→              // Erreur côté serveur pendant le stream
+  1637→              streamError = true;
+  1638→              updateAssistant({
+  1639→                content: "Désolé, une erreur est survenue. Réessaie.",
+  1640→              });
+  1641→            }
+  1642→          }
+  1643→        }
+  1644→
+  1645→        // Si le stream s'est fermé sans aucun token (ni delta, ni error),
+  1646→        // on retire le placeholder et on bascule vers le fallback non-streaming
+  1647→        // pour garantir une réponse à l'utilisateur·rice.
+  1648→        if (!firstDeltaReceived && !streamError) {
+  1649→          console.warn(
+  1650→            "[Chat] Stream fermé sans delta, fallback vers /api/chat",
+  1651→          );
+  1652→          setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
+  1653→          await fallbackToNonStream();
+  1654→        }
+  1655→      } catch (err) {
+  1656→        // Erreur réseau ou parse → fallback vers /api/chat (non-streaming)
+  1657→        console.warn("[Chat] Stream erreur, fallback vers /api/chat:", err);
+  1658→        try {
+  1659→          await fallbackToNonStream();
+  1660→        } catch (err2) {
+  1661→          const msg =
+  1662→            err2 instanceof Error ? err2.message : "Erreur inconnue";
+  1663→          toast.error("Problème de connexion", {
+  1664→            description: msg + ". Réessaie dans un instant.",
+  1665→          });
+  1666→        }
+  1667→      } finally {
+  1668→        setIsTyping(false);
+  1669→        inputRef.current?.focus();
+  1670→      }
+  1671→    },
+  1672→    [anonymousId, isTyping, messages, persona, activateCompanion, userId],
+  1673→  );
+  1674→
+  1675→  const onSubmit = (e: React.FormEvent) => {
+  1676→    e.preventDefault();
+  1677→    sendMessage(input);
+  1678→  };
+  1679→
+  1680→  const onSuggestion = (s: string) => {
+  1681→    sendMessage(s);
+  1682→  };
+  1683→
+  1684→  const showSuggestions = messages.length <= 1;
+  1685→
+  1686→  return (
+  1687→    <section
+  1688→      id="chat"
+  1689→      aria-label="Chat avec Sankofa"
+  1690→      className={cn(
+  1691→        "w-full h-full flex flex-col overflow-hidden bg-creme-baobab",
+  1692→        className,
+  1693→      )}
+  1694→    >
+  1695→      {/* Photo banner — Abidjan skyline at sunset, with warm gradient overlay */}
+  1696→      <div className="relative h-[100px] sm:h-[120px] w-full shrink-0 overflow-hidden bg-noir-encre">
+  1697→        <img
+  1698→          src="/images/v3/abidjan-sunset.jpg"
+  1699→          alt="Skyline d'Abidjan au coucher du soleil — pont et immeubles dorés"
+  1700→          className="absolute inset-0 w-full h-full object-cover"
+  1701→          loading="eager"
+  1702→          decoding="async"
+  1703→        />
+  1704→        {/* Voile chaud terre-brûlée → transparent (lisibilité du texte par-dessus) */}
+  1705→        <div
+  1706→          className="absolute inset-0"
+  1707→          style={{
+  1708→            background:
+  1709→              "linear-gradient(90deg, rgba(92, 42, 26, 0.85) 0%, rgba(122, 46, 18, 0.55) 45%, rgba(155, 63, 31, 0.25) 80%, rgba(26, 15, 10, 0.10) 100%)",
+  1710→          }}
+  1711→        />
+  1712→        {/* Reflet doré du bas pour fondu avec le header terracotta */}
+  1713→        <div
+  1714→          className="absolute inset-x-0 bottom-0 h-8"
+  1715→          style={{
+  1716→            background:
+  1717→              "linear-gradient(180deg, transparent 0%, rgba(199, 91, 60, 0.35) 100%)",
+  1718→          }}
+  1719→          aria-hidden="true"
+  1720→        />
+  1721→        <div className="relative z-10 h-full flex flex-col justify-center px-4 sm:px-5">
+  1722→          <p
+  1723→            className="text-creme-baobab text-lg sm:text-xl font-bold leading-tight"
+  1724→            style={{ fontFamily: "var(--font-bricolage)" }}
+  1725→          >
+  1726→            Sankofa · Ton aîné·e santé
+  1727→          </p>
+  1728→          <p className="text-creme-baobab/80 text-[11px] sm:text-xs mt-0.5">
+  1729→            100% anonyme · 24/7 · Façonnée à Abidjan 🇨🇮
+  1730→          </p>
+  1731→        </div>
+  1732→      </div>
+  1733→
+  1734→      {/* Persona selector — single line, no wrap */}
+  1735→      <div className="shrink-0 px-3 py-1.5 bg-sable-dore/40 border-b border-ocre-rouge/20">
+  1736→        <div className="flex items-center gap-1.5 overflow-x-auto aya-scroll whitespace-nowrap">
+  1737→          <span className="text-xs font-medium text-ocre-rouge shrink-0">Parle à :</span>
+  1738→          {PERSONAS.map((p) => (
+  1739→            <button
+  1740→              key={p.id}
+  1741→              type="button"
+  1742→              onClick={() => handlePersonaChange(p.id)}
+  1743→              aria-pressed={persona === p.id}
+  1744→              title={p.sub}
+  1745→              className={cn(
+  1746→                "shrink-0 text-xs px-2.5 py-1 rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta",
+  1747→                persona === p.id
+  1748→                  ? "bg-terracotta text-creme-baobab border-terracotta shadow"
+  1749→                  : "bg-creme-baobab text-ocre-rouge border-ocre-rouge/30 hover:border-terracotta/60",
+  1750→              )}
+  1751→            >
+  1752→              <span className="font-semibold">{p.name}</span>
+  1753→            </button>
+  1754→          ))}
+  1755→        </div>
+  1756→      </div>
+  1757→
+  1758→      {/* Header (style WhatsApp) */}
+  1759→      <header className="flex items-center gap-3 px-4 py-3 bg-terracotta text-text-on-dark">
+  1760→        <PersonaAvatar
+  1761→          persona={persona}
+  1762→          size={40}
+  1763→          priority
+  1764→          className="border-2 border-or-poudre-clair/30"
+  1765→        />
+  1766→        <div className="flex-1 min-w-0">
+  1767→          <div className="flex items-center gap-2 flex-wrap">
+  1768→            <h2 className="font-bold truncate" style={{ fontFamily: "var(--font-bricolage)" }}>
+  1769→              {PERSONAS.find((p) => p.id === persona)?.name ?? "Aya"}
+  1770→            </h2>
+  1771→            {userId ? (
+  1772→              <Badge className="bg-or-poudre-clair/25 text-text-accent-on-dark border border-or-poudre-clair/40 gap-1 text-[10px]">
+  1773→                <ShieldCheck className="size-3" />
+  1774→                Connecté·e
+  1775→              </Badge>
+  1776→            ) : (
+  1777→              <Badge className="bg-or-poudre-clair/15 text-text-accent-on-dark border-0 gap-1 text-[10px]">
+  1778→                <ShieldCheck className="size-3" />
+  1779→                Anonyme
+  1780→              </Badge>
+  1781→            )}
+  1782→            <Badge
+  1783→              className="bg-or-poudre-clair/20 text-text-accent-on-dark border-0 text-[10px] hidden md:inline-flex"
+  1784→              title="Sankofa parle aussi Dioula et Baoulé en audio (bientôt) — à l'oral, pas à l'écrit"
+  1785→            >
+  1786→              FR · Nouchi
+  1787→            </Badge>
+  1788→          </div>
+  1789→          <p className="text-xs text-text-on-dark-soft">
+  1790→            {isTyping ? "en train d'écrire..." : `${PERSONAS.find((p) => p.id === persona)?.label ?? "Grande sœur"} · en ligne 24/7`}
+  1791→          </p>
+  1792→        </div>
+  1793→        {/* Login button (optional auth — Task 12). Hydration-safe via LoginButton's
+  1794→            internal "loading" placeholder state. */}
+  1795→        <div className="shrink-0">
+  1796→          <LoginButton variant="header" />
+  1797→        </div>
+  1798→        <SankofaLogo size={28} className="opacity-80 hidden sm:block" aria-hidden="true" />
+  1799→      </header>
+  1800→
+  1801→      {/* Mode compagnon — bannière + actions rapides */}
+  1802→      {companionMode.active && (
+  1803→        <div className="px-3 sm:px-4 py-2.5 bg-sable-dore/40 border-b border-ocre-rouge/20 space-y-2">
+  1804→          <CompanionBanner
+  1805→            state={companionMode}
+  1806→            onDismiss={handleDismissCompanion}
+  1807→          />
+  1808→          {companionMode.stage !== "completed" &&
+  1809→            companionMode.stage !== "cancelled" && (
+  1810→              <CompanionQuickActions
+  1811→                onAction={handleQuickAction}
+  1812→                disabled={isTyping}
+  1813→              />
+  1814→            )}
+  1815→        </div>
+  1816→      )}
+  1817→
+  1818→      {/* Messages */}
+  1819→      <div
+  1820→        ref={scrollRef}
+  1821→        onScroll={onScrollNavToggle}
+  1822→        className="aya-chat-bg aya-scroll flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 py-4 flex flex-col gap-3"
+  1823→      >
+  1824→        <AnimatePresence initial={false}>
+  1825→          {messages.map((m) => (
+  1826→            <MessageBubble
+  1827→              key={m.id}
+  1828→              msg={m}
+  1829→              onSaveToCarnet={onSaveToCarnet}
+  1830→              anonymousId={anonymousId}
+  1831→              onSwitchPersona={handlePersonaChange}
+  1832→            />
+  1833→          ))}
+  1834→        </AnimatePresence>
+  1835→        {isTyping && <TypingIndicator persona={persona} />}
+  1836→        <div ref={bottomRef} aria-hidden="true" />
+  1837→      </div>
+  1838→
+  1839→      {/* Suggestions */}
+  1840→      {showSuggestions && (
+  1841→        <div className="shrink-0 px-3 sm:px-4 py-2 border-t border-ocre-rouge/20 bg-creme-baobab/60 max-h-32 overflow-y-auto aya-scroll">
+  1842→          <p className="text-xs text-ocre-rouge mb-2.5 font-medium">
+  1843→            Suggestions pour démarrer 👇
+  1844→          </p>
+  1845→          <div className="flex flex-wrap gap-2">
+  1846→            {SUGGESTIONS.map((s) => (
+  1847→              <CaurisChip
+  1848→                key={s.label}
+  1849→                emoji={s.emoji}
+  1850→                onClick={() => onSuggestion(s.label)}
+  1851→                disabled={isTyping}
+  1852→              >
+  1853→                {s.label}
+  1854→              </CaurisChip>
+  1855→            ))}
+  1856→          </div>
+  1857→        </div>
+  1858→      )}
+  1859→
+  1860→      {/* Input bar — sticky bottom, always visible */}
+  1861→      <form
+  1862→        onSubmit={onSubmit}
+  1863→        className="shrink-0 flex items-center gap-2 px-3 sm:px-4 py-2.5 border-t border-ocre-rouge/20 bg-creme-baobab"
+  1864→      >
+  1865→        <Input
+  1866→          ref={inputRef}
+  1867→          value={input}
+  1868→          onChange={(e) => setInput(e.target.value)}
+  1869→          placeholder={
+  1870→            isRecording
+  1871→              ? "Enregistrement en cours... clique sur ⏹ pour transcrire"
+  1872→              : isTranscribing
+  1873→                ? "Transcription de l'audio..."
+  1874→                : "Écris ta question ici..."
+  1875→          }
+  1876→          disabled={isTyping || isRecording || isTranscribing}
+  1877→          maxLength={4000}
+  1878→          aria-label="Message à envoyer à Sankofa"
+  1879→          autoComplete="off"
+  1880→          className="aya-input-glow flex-1 bg-creme-baobab border-ocre-rouge/30 focus-visible:ring-terracotta"
+  1881→        />
+  1882→        {/* Bouton micro (ASR) — hydratation-safe : désactivé jusqu'au mount côté client.
+  1883→            Même taille et même forme que le bouton Envoyer (cohérence visuelle).
+  1884→            Pendant l'enregistrement : fond ocre-rouge + pulse (point rouge visible). */}
+  1885→        <Button
+  1886→          type="button"
+  1887→          size="icon"
+  1888→          onClick={isRecording ? stopRecording : startRecording}
+  1889→          disabled={!mounted || isTyping || isTranscribing}
+  1890→          aria-label={
+  1891→            isRecording
+  1892→              ? "Arrêter l'enregistrement et transcrire"
+  1893→              : "Parler à Sankofa (micro)"
+  1894→          }
+  1895→          aria-pressed={isRecording}
+  1896→          title={
+  1897→            isRecording
+  1898→              ? "Arrêter et transcrire"
+  1899→              : isTranscribing
+  1900→                ? "Transcription en cours..."
+  1901→                : "Parler (entrée vocale)"
+  1902→          }
+  1903→          className={cn(
+  1904→            "aya-btn-press shrink-0",
+  1905→            isRecording
+  1906→              ? "bg-ocre-rouge text-text-on-dark animate-pulse ring-2 ring-ocre-rouge/40"
+  1907→              : "bg-terracotta hover:bg-ocre-rouge text-text-on-dark",
+  1908→          )}
+  1909→        >
+  1910→          {isTranscribing ? (
+  1911→            <Loader2 className="size-4 animate-spin" />
+  1912→          ) : isRecording ? (
+  1913→            <Square className="size-4 fill-current" />
+  1914→          ) : (
+  1915→            <Mic className="size-4" />
+  1916→          )}
+  1917→        </Button>
+  1918→        <Button
+  1919→          type="submit"
+  1920→          size="icon"
+  1921→          disabled={isTyping || !input.trim() || isRecording || isTranscribing}
+  1922→          aria-label="Envoyer le message"
+  1923→          className="aya-btn-press shrink-0 bg-terracotta hover:bg-ocre-rouge text-text-on-dark"
+  1924→        >
+  1925→          {isTyping ? (
+  1926→            <Loader2 className="size-4 animate-spin" />
+  1927→          ) : (
+  1928→            <Send className="size-4" />
+  1929→          )}
+  1930→        </Button>
+  1931→      </form>
+  1932→    </section>
+  1933→  );
+  1934→}
+  1935→
+  1936→export default Chat;
+  1937→

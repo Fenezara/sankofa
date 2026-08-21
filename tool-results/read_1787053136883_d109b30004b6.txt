@@ -1,0 +1,957 @@
+     1→@import "tailwindcss";
+     2→@import "tw-animate-css";
+     3→
+     4→@custom-variant dark (&:is(.dark *));
+     5→
+     6→/* ============================================================
+     7→   SANKOFA — Global : empêcher le scroll du body + zoom
+     8→   ============================================================ */
+     9→html,
+    10→body {
+    11→  overflow: hidden;
+    12→  overscroll-behavior: none;
+    13→  touch-action: pan-x pan-y;
+    14→  -webkit-text-size-adjust: 100%;
+    15→  -webkit-touch-callout: none;
+    16→  position: fixed;
+    17→  width: 100%;
+    18→  height: 100%;
+    19→}
+    20→
+    21→/* ============================================================
+    22→   AYA — Palette "Terre Brûlée & Couchée de Soleil"
+    23→   Côte d'Ivoire — couleurs chaudes, terre, couchant.
+    24→   ============================================================ */
+    25→
+    26→@theme inline {
+    27→  --color-background: var(--background);
+    28→  --color-foreground: var(--foreground);
+    29→  --font-sans: var(--font-inter);
+    30→  --font-display: var(--font-bricolage);
+    31→  --font-caveat: var(--font-caveat);
+    32→  --font-mono: var(--font-inter);
+    33→  --color-sidebar-ring: var(--sidebar-ring);
+    34→  --color-sidebar-border: var(--sidebar-border);
+    35→  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    36→  --color-sidebar-accent: var(--sidebar-accent);
+    37→  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    38→  --color-sidebar-primary: var(--sidebar-primary);
+    39→  --color-sidebar-foreground: var(--sidebar-foreground);
+    40→  --color-sidebar: var(--sidebar);
+    41→  --color-chart-5: var(--chart-5);
+    42→  --color-chart-4: var(--chart-4);
+    43→  --color-chart-3: var(--chart-3);
+    44→  --color-chart-2: var(--chart-2);
+    45→  --color-chart-1: var(--chart-1);
+    46→  --color-ring: var(--ring);
+    47→  --color-input: var(--input);
+    48→  --color-border: var(--border);
+    49→  --color-destructive: var(--destructive);
+    50→  --color-accent-foreground: var(--accent-foreground);
+    51→  --color-accent: var(--accent);
+    52→  --color-muted-foreground: var(--muted-foreground);
+    53→  --color-muted: var(--muted);
+    54→  --color-secondary-foreground: var(--secondary-foreground);
+    55→  --color-secondary: var(--secondary);
+    56→  --color-primary-foreground: var(--primary-foreground);
+    57→  --color-primary: var(--primary);
+    58→  --color-popover-foreground: var(--popover-foreground);
+    59→  --color-popover: var(--popover);
+    60→  --color-card-foreground: var(--card-foreground);
+    61→  --color-card: var(--card);
+    62→
+    63→  /* Palette Sankofa — variables sémantiques Tailwind */
+    64→  --color-terre-brulee: var(--terre-brulee);
+    65→  --color-ocre-rouge: var(--ocre-rouge);
+    66→  --color-terracotta: var(--terracotta);
+    67→  --color-ambre-couchant: var(--ambre-couchant);
+    68→  --color-or-poudre: var(--or-poudre);
+    69→  --color-or-poudre-clair: var(--or-poudre-clair);
+    70→  --color-sable-dore: var(--sable-dore);
+    71→  --color-creme-baobab: var(--creme-baobab);
+    72→  --color-rose-couchee: var(--rose-couchee);
+    73→  --color-mauve-crepuscule: var(--mauve-crepuscule);
+    74→  --color-indigo-bogolan: var(--indigo-bogolan);
+    75→  --color-vert-baobab: var(--vert-baobab);
+    76→  --color-noir-encre: var(--noir-encre);
+    77→
+    78→  /* Variables sémantiques de contraste (WCAG AA) */
+    79→  --color-text-on-light: var(--text-on-light);
+    80→  --color-text-on-light-soft: var(--text-on-light-soft);
+    81→  --color-text-on-light-muted: var(--text-on-light-muted);
+    82→  --color-text-on-dark: var(--text-on-dark);
+    83→  --color-text-on-dark-soft: var(--text-on-dark-soft);
+    84→  --color-text-on-dark-muted: var(--text-on-dark-muted);
+    85→  --color-text-accent: var(--text-accent);
+    86→  --color-text-accent-on-dark: var(--text-accent-on-dark);
+    87→  --color-text-link: var(--text-link);
+    88→  --color-text-link-hover: var(--text-link-hover);
+    89→  --color-or-poudre-clair: var(--or-poudre-clair);
+    90→
+    91→  --radius-sm: calc(var(--radius) - 4px);
+    92→  --radius-md: calc(var(--radius) - 2px);
+    93→  --radius-lg: var(--radius);
+    94→  --radius-xl: calc(var(--radius) + 4px);
+    95→}
+    96→
+    97→:root {
+    98→  --radius: 0.75rem;
+    99→
+   100→  /* ===== Palette Sankofa (hex) ===== */
+   101→  /* Noms de marque conservés, mais valeurs ajustées pour WCAG AA (4.5:1+). */
+   102→  --terre-brulee: #3D1A0E;        /* text principal sur fond clair — contraste 12:1 sur crème */
+   103→  --ocre-rouge: #7A2E12;          /* accents, titres — contraste 7.5:1 sur crème */
+   104→  --terracotta: #A8451F;          /* boutons primaires, bulles assistant — lisible sur clair */
+   105→  --ambre-couchant: #8B5A14;      /* highlights, badges — contraste 5.2:1 sur crème */
+   106→  --or-poudre: #6B4416;           /* backgrounds chauds, hover, TEXTE sur fond clair — contraste 7:1 */
+   107→  --or-poudre-clair: #F4C77B;     /* ancienne valeur, utilisée uniquement pour fonds décoratifs */
+   108→  --sable-dore: #E8D5A8;          /* fond clair alternatif */
+   109→  --creme-baobab: #FBF3E4;        /* fond principal clair */
+   110→  --rose-couchee: #B5684A;        /* bulles utilisateur — texte blanc dessus = 4.8:1 */
+   111→  --mauve-crepuscule: #5C3543;    /* liens, secondaire — contraste 7:1 sur crème */
+   112→  --indigo-bogolan: #1F2D44;      /* accent dark */
+   113→  --vert-baobab: #2D4A2D;         /* accent santé */
+   114→  --noir-encre: #14090A;          /* noir profond */
+   115→
+   116→  /* ===== Variables sémantiques de contraste ===== */
+   117→  /* Utiliser ces variables pour le texte, pas les couleurs brutes. */
+   118→  --text-on-light: #3D1A0E;       /* texte principal sur fond clair (crème, sable, or-poudre-clair) */
+   119→  --text-on-light-soft: #5C2A1A;  /* texte secondaire sur fond clair */
+   120→  --text-on-light-muted: #7A4530; /* texte atténué mais lisible sur fond clair */
+   121→  --text-on-dark: #FBF3E4;        /* texte principal sur fond sombre (terre, terracotta, ocre) */
+   122→  --text-on-dark-soft: #F5E6C8;   /* texte secondaire sur fond sombre */
+   123→  --text-on-dark-muted: #E8D5A8;  /* texte atténué sur fond sombre */
+   124→  --text-accent: #7A2E12;         /* texte accent (ocré) lisible sur fond clair */
+   125→  --text-accent-on-dark: #F4C77B; /* texte accent sur fond sombre */
+   126→  --text-link: #8B3A0E;           /* liens — contraste 5:1 sur crème */
+   127→  --text-link-hover: #5C2A1A;     /* liens hover */
+   128→
+   129→  /* ===== Depth variants — palette enrichie (50 → 900) ===== */
+   130→  /* Terracotta */
+   131→  --terracotta-50: #FBE9E0;
+   132→  --terracotta-100: #F6CFBC;
+   133→  --terracotta-200: #EFA689;
+   134→  --terracotta-300: #E67E57;
+   135→  --terracotta-400: #D86942;
+   136→  --terracotta-500: #C75B3C;
+   137→  --terracotta-600: #A84A2E;
+   138→  --terracotta-700: #873926;
+   139→  --terracotta-800: #6B2D1E;
+   140→  --terracotta-900: #4F2117;
+   141→
+   142→  /* Ambre couchant */
+   143→  --ambre-50: #FDF1DC;
+   144→  --ambre-100: #FAE0B3;
+   145→  --ambre-200: #F5C97F;
+   146→  --ambre-300: #F0B552;
+   147→  --ambre-400: #ECA83D;
+   148→  --ambre-500: #E89B3C;
+   149→  --ambre-600: #C97E26;
+   150→  --ambre-700: #A3611D;
+   151→  --ambre-800: #7E4A18;
+   152→  --ambre-900: #5A3411;
+   153→
+   154→  /* Or poudre — palette depth */
+   155→  --or-50: #FEF7E6;
+   156→  --or-100: #FCEBC0;
+   157→  --or-200: #F9DD94;
+   158→  --or-300: #F6D06A;
+   159→  --or-400: #F4C77B;       /* couleur décorative (fond) */
+   160→  --or-500: #C9943F;       /* couleur texte moyen */
+   161→  --or-600: #A5752F;       /* couleur texte lisible sur clair */
+   162→  --or-700: #7E5923;       /* couleur texte foncé */
+   163→  --or-800: #5C3F1A;
+   164→  --or-900: #5A3F19;
+   165→
+   166→  /* Terre brûlée */
+   167→  --terre-50: #F3E0D8;
+   168→  --terre-100: #E0B5A0;
+   169→  --terre-200: #B9755B;
+   170→  --terre-300: #8C4930;
+   171→  --terre-400: #6E371F;
+   172→  --terre-500: #5C2A1A;
+   173→  --terre-600: #4A2116;
+   174→  --terre-700: #3A1810;
+   175→  --terre-800: #2A110A;
+   176→  --terre-900: #1A0905;
+   177→
+   178→  /* Vert baobab */
+   179→  --vert-50: #E5EDE5;
+   180→  --vert-100: #BFD3BF;
+   181→  --vert-200: #93B193;
+   182→  --vert-300: #6A8E6A;
+   183→  --vert-400: #4F7A4F;
+   184→  --vert-500: #3D5C3D;
+   185→  --vert-600: #2E462E;
+   186→  --vert-700: #213321;
+   187→
+   188→  /* ===== Mapping shadcn/ui ===== */
+   189→  --background: var(--creme-baobab);
+   190→  --foreground: var(--terre-brulee);
+   191→  --card: #FFFFFF;
+   192→  --card-foreground: var(--terre-brulee);
+   193→  --popover: #FFFFFF;
+   194→  --popover-foreground: var(--terre-brulee);
+   195→  --primary: var(--terracotta);
+   196→  --primary-foreground: var(--or-poudre);
+   197→  --secondary: var(--sable-dore);
+   198→  --secondary-foreground: var(--terre-brulee);
+   199→  --muted: #F0E2C4;
+   200→  --muted-foreground: #8C5A3F;
+   201→  --accent: var(--ambre-couchant);
+   202→  --accent-foreground: var(--terre-brulee);
+   203→  --destructive: #B23A1A;
+   204→  --border: #E6D2A8;
+   205→  --input: #EAD9B4;
+   206→  --ring: var(--terracotta);
+   207→  --chart-1: var(--terracotta);
+   208→  --chart-2: var(--ambre-couchant);
+   209→  --chart-3: var(--ocre-rouge);
+   210→  --chart-4: var(--vert-baobab);
+   211→  --chart-5: var(--mauve-crepuscule);
+   212→  --sidebar: #FFF8E7;
+   213→  --sidebar-foreground: var(--terre-brulee);
+   214→  --sidebar-primary: var(--terracotta);
+   215→  --sidebar-primary-foreground: var(--or-poudre);
+   216→  --sidebar-accent: var(--sable-dore);
+   217→  --sidebar-accent-foreground: var(--terre-brulee);
+   218→  --sidebar-border: #E6D2A8;
+   219→  --sidebar-ring: var(--terracotta);
+   220→
+   221→  /* ===== Bulles chat Sankofa ===== */
+   222→  --aya-bubble-assistant: var(--terracotta);
+   223→  --aya-bubble-assistant-text: var(--text-on-dark);
+   224→  --aya-bubble-user: var(--rose-couchee);
+   225→  --aya-bubble-user-text: var(--text-on-dark);
+   226→  --aya-chat-bg: var(--creme-baobab);
+   227→}
+   228→
+   229→.dark {
+   230→  --background: #1A0F0A;
+   231→  --foreground: var(--text-on-dark);
+   232→  --card: #2A1A0F;
+   233→  --card-foreground: var(--text-on-dark);
+   234→  --popover: #2A1A0F;
+   235→  --popover-foreground: var(--text-on-dark);
+   236→  --primary: var(--terracotta);
+   237→  --primary-foreground: var(--text-on-dark);
+   238→  --secondary: #3A2418;
+   239→  --secondary-foreground: var(--text-on-dark);
+   240→  --muted: #3A2418;
+   241→  --muted-foreground: #C4A577;
+   242→  --accent: var(--ambre-couchant);
+   243→  --accent-foreground: var(--text-on-dark);
+   244→  --destructive: #D04528;
+   245→  --border: #4A2E1E;
+   246→  --input: #4A2E1E;
+   247→  --ring: var(--terracotta);
+   248→  --sidebar: #2A1A0F;
+   249→  --sidebar-foreground: var(--text-on-dark);
+   250→  --sidebar-border: #4A2E1E;
+   251→  --sidebar-ring: var(--terracotta);
+   252→
+   253→  --aya-bubble-assistant: var(--terracotta);
+   254→  --aya-bubble-assistant-text: var(--text-on-dark);
+   255→  --aya-bubble-user: #B8704F;
+   256→  --aya-bubble-user-text: var(--text-on-dark);
+   257→  --aya-chat-bg: #1F1308;
+   258→}
+   259→
+   260→@layer base {
+   261→  * {
+   262→    @apply border-border outline-ring/50;
+   263→  }
+   264→  body {
+   265→    @apply bg-background text-foreground;
+   266→    font-feature-settings: "ss01", "cv01", "cv02";
+   267→  }
+   268→  ::selection {
+   269→    background-color: var(--terracotta);
+   270→    color: var(--text-on-dark);
+   271→  }
+   272→  /* Focus-visible terracotta pour accessibilité clavier */
+   273→  *:focus-visible {
+   274→    outline: 2px solid var(--terracotta);
+   275→    outline-offset: 2px;
+   276→    border-radius: 2px;
+   277→  }
+   278→  h1, h2, h3, h4, h5, h6 {
+   279→    font-family: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+   280→    font-weight: 700;
+   281→    letter-spacing: -0.02em;
+   282→  }
+   283→}
+   284→
+   285→/* ============================================================
+   286→   AYA — Dégradé signature
+   287→   ============================================================ */
+   288→.aya-gradient-signature {
+   289→  background: linear-gradient(135deg, #5C2A1A 0%, #9B3F1F 35%, #C75B3C 65%, #E89B3C 100%);
+   290→}
+   291→.aya-gradient-text {
+   292→  background: linear-gradient(135deg, #E89B3C 0%, #F4C77B 50%, #FBF3E4 100%);
+   293→  -webkit-background-clip: text;
+   294→  background-clip: text;
+   295→  color: transparent;
+   296→  -webkit-text-fill-color: transparent;
+   297→}
+   298→
+   299→/* ============================================================
+   300→   AYA — Dégradés enrichis (palette "Terre Brûlée & Couchée de Soleil")
+   301→   ============================================================ */
+   302→.aya-gradient-sunset {
+   303→  background: linear-gradient(135deg, #5C2A1A 0%, #9B3F1F 25%, #C75B3C 55%, #E89B3C 80%, #F4C77B 100%);
+   304→}
+   305→.aya-gradient-earth {
+   306→  background: linear-gradient(180deg, #4A2116 0%, #5C2A1A 50%, #3A1810 100%);
+   307→}
+   308→.aya-gradient-gold {
+   309→  background: linear-gradient(135deg, #C9943F 0%, #E89B3C 40%, #F4C77B 80%, #FBF3E4 100%);
+   310→}
+   311→.aya-gradient-night {
+   312→  background: linear-gradient(180deg, #1A0F0A 0%, #2A1810 50%, #1A0905 100%);
+   313→}
+   314→.aya-gradient-text-sunset {
+   315→  background: linear-gradient(135deg, #9B3F1F 0%, #C75B3C 35%, #E89B3C 70%, #F4C77B 100%);
+   316→  -webkit-background-clip: text;
+   317→  background-clip: text;
+   318→  color: transparent;
+   319→  -webkit-text-fill-color: transparent;
+   320→  text-shadow: 0 1px 16px rgba(232, 155, 60, 0.25);
+   321→}
+   322→
+   323→/* ============================================================
+   324→   AYA — Textures culturelles (SVG inline en data URI)
+   325→   ============================================================ */
+   326→/* Bogolan : motif zigzag + points, opacité discrète */
+   327→.aya-texture-bogolan {
+   328→  background-image:
+   329→    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='%235C2A1A' stroke-width='1' opacity='0.55'%3E%3Cpath d='M0 40 L20 20 L40 40 L60 20 L80 40' /%3E%3Cpath d='M0 60 L20 40 L40 60 L60 40 L80 60' /%3E%3Ccircle cx='40' cy='40' r='2.5' fill='%235C2A1A' stroke='none' /%3E%3C/g%3E%3C/svg%3E");
+   330→  background-size: 80px 80px;
+   331→  background-repeat: repeat;
+   332→  opacity: 0.06;
+   333→}
+   334→/* Kita : bandes géométriques colorées (bordure décorative) */
+   335→.aya-texture-kita {
+   336→  background-image:
+   337→    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='8' viewBox='0 0 40 8'%3E%3Crect x='0' y='0' width='8' height='8' fill='%239B3F1F'/%3E%3Crect x='8' y='0' width='4' height='8' fill='%23E89B3C'/%3E%3Crect x='12' y='0' width='4' height='8' fill='%23C75B3C'/%3E%3Crect x='16' y='0' width='8' height='8' fill='%23F4C77B'/%3E%3Crect x='24' y='0' width='4' height='8' fill='%237B4B5C'/%3E%3Crect x='28' y='0' width='4' height='8' fill='%239B3F1F'/%3E%3Crect x='32' y='0' width='8' height='8' fill='%23E89B3C'/%3E%3C/svg%3E");
+   338→  background-size: 40px 8px;
+   339→  background-repeat: repeat-x;
+   340→}
+   341→/* Raffia : motif tissage (lignes croisées) */
+   342→.aya-texture-raffia {
+   343→  background-image:
+   344→    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cg stroke='%239B3F1F' stroke-width='0.6' opacity='0.4' fill='none'%3E%3Cpath d='M0 0 L 24 24 M 24 0 L 0 24 M 0 12 L 24 12 M 12 0 L 12 24' /%3E%3C/g%3E%3C/svg%3E");
+   345→  background-size: 24px 24px;
+   346→  background-repeat: repeat;
+   347→  opacity: 0.08;
+   348→}
+   349→
+   350→/* ============================================================
+   351→   AYA — Textures v2 (photos jpg Adinkra + Bogolan)
+   352→   Utilitaires pour overlays subtils (header, nav, cards hover).
+   353→   ============================================================ */
+   354→/* Adinkra pattern (subtle background texture, behind content) */
+   355→.aya-texture-adinkra {
+   356→  background-image: url("/images/v3/pattern-adinkra.jpg");
+   357→  background-size: 240px 240px;
+   358→  background-repeat: repeat;
+   359→  background-position: center;
+   360→}
+   361→/* Bogolan pattern (warm earth texture) */
+   362→.aya-texture-bogolan-v2 {
+   363→  background-image: url("/images/v3/pattern-bogolan.jpg");
+   364→  background-size: 240px 240px;
+   365→  background-repeat: repeat;
+   366→  background-position: center;
+   367→}
+   368→/* Card hover : reveals bogolan pattern at 5% opacity on hover (subtle) */
+   369→.aya-card-bogolan-hover {
+   370→  position: relative;
+   371→  isolation: isolate;
+   372→}
+   373→.aya-card-bogolan-hover::after {
+   374→  content: "";
+   375→  position: absolute;
+   376→  inset: 0;
+   377→  background-image: url("/images/v3/pattern-bogolan.jpg");
+   378→  background-size: 180px 180px;
+   379→  background-repeat: repeat;
+   380→  background-position: center;
+   381→  opacity: 0;
+   382→  pointer-events: none;
+   383→  transition: opacity 0.3s ease;
+   384→  mix-blend-mode: multiply;
+   385→  z-index: -1;
+   386→  border-radius: inherit;
+   387→}
+   388→.aya-card-bogolan-hover:hover::after,
+   389→.aya-card-bogolan-hover:focus-visible::after {
+   390→  opacity: 0.05;
+   391→}
+   392→
+   393→/* ============================================================
+   394→   AYA — Glow effects (box-shadow colorés chauds)
+   395→   ============================================================ */
+   396→.aya-glow-ambre {
+   397→  box-shadow: 0 0 24px rgba(232, 155, 60, 0.45), 0 0 8px rgba(244, 199, 123, 0.3);
+   398→}
+   399→.aya-glow-terracotta {
+   400→  box-shadow: 0 0 28px rgba(199, 91, 60, 0.45), 0 0 8px rgba(232, 155, 60, 0.25);
+   401→}
+   402→.aya-glow-or {
+   403→  box-shadow: 0 0 32px rgba(244, 199, 123, 0.55), 0 0 12px rgba(232, 155, 60, 0.35);
+   404→}
+   405→.aya-glow-soft {
+   406→  box-shadow: 0 8px 30px rgba(199, 91, 60, 0.18), 0 2px 8px rgba(92, 42, 26, 0.08);
+   407→}
+   408→
+   409→/* ============================================================
+   410→   AYA — Glassmorphism warm (backdrop-blur + tint chaude)
+   411→   ============================================================ */
+   412→.aya-glass-warm {
+   413→  background: rgba(251, 243, 228, 0.55);
+   414→  backdrop-filter: blur(12px);
+   415→  -webkit-backdrop-filter: blur(12px);
+   416→  border: 1px solid rgba(244, 199, 123, 0.35);
+   417→  box-shadow: 0 4px 24px rgba(92, 42, 26, 0.10);
+   418→}
+   419→.aya-glass-dark {
+   420→  background: rgba(26, 15, 10, 0.55);
+   421→  backdrop-filter: blur(14px);
+   422→  -webkit-backdrop-filter: blur(14px);
+   423→  border: 1px solid rgba(244, 199, 123, 0.25);
+   424→}
+   425→
+   426→/* ============================================================
+   427→   AYA — Section divider animé (séparateur entre actes)
+   428→   ============================================================ */
+   429→.aya-section-divider {
+   430→  position: relative;
+   431→  height: 32px;
+   432→  background: transparent;
+   433→  overflow: hidden;
+   434→}
+   435→.aya-section-divider::before {
+   436→  content: "";
+   437→  position: absolute;
+   438→  inset: 0;
+   439→  background-image:
+   440→    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='32' viewBox='0 0 80 32' preserveAspectRatio='none'%3E%3Cpath d='M0 16 Q 20 4, 40 16 T 80 16' fill='none' stroke='%239B3F1F' stroke-width='1.5' opacity='0.6' /%3E%3Cpath d='M0 22 Q 20 10, 40 22 T 80 22' fill='none' stroke='%23E89B3C' stroke-width='1' opacity='0.4' /%3E%3C/svg%3E");
+   441→  background-size: 80px 32px;
+   442→  background-repeat: repeat-x;
+   443→  opacity: 0.7;
+   444→}
+   445→
+   446→/* ============================================================
+   447→   AYA — Micro-interactions (lift, scale, underline reveal)
+   448→   ============================================================ */
+   449→.aya-lift {
+   450→  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease-out;
+   451→  will-change: transform;
+   452→}
+   453→.aya-lift:hover {
+   454→  transform: translateY(-6px);
+   455→  box-shadow: 0 14px 40px rgba(199, 91, 60, 0.18), 0 4px 12px rgba(92, 42, 26, 0.10);
+   456→}
+   457→.aya-lift-glow:hover {
+   458→  box-shadow: 0 14px 40px rgba(232, 155, 60, 0.32), 0 0 24px rgba(244, 199, 123, 0.25);
+   459→}
+   460→.aya-btn-press {
+   461→  transition: transform 0.18s ease-out, box-shadow 0.2s ease-out;
+   462→  will-change: transform;
+   463→}
+   464→.aya-btn-press:hover {
+   465→  transform: scale(1.03) translateY(-1px);
+   466→  box-shadow: 0 8px 24px rgba(199, 91, 60, 0.32);
+   467→}
+   468→.aya-btn-press:active {
+   469→  transform: scale(0.99);
+   470→}
+   471→.aya-underline-reveal {
+   472→  position: relative;
+   473→}
+   474→.aya-underline-reveal::after {
+   475→  content: "";
+   476→  position: absolute;
+   477→  left: 0;
+   478→  bottom: -2px;
+   479→  width: 0;
+   480→  height: 1.5px;
+   481→  background: linear-gradient(90deg, #C75B3C, #E89B3C);
+   482→  transition: width 0.28s ease-out;
+   483→}
+   484→.aya-underline-reveal:hover::after,
+   485→.aya-underline-reveal:focus-visible::after {
+   486→  width: 100%;
+   487→}
+   488→.aya-input-glow:focus-visible {
+   489→  outline: none;
+   490→  border-color: var(--terracotta);
+   491→  box-shadow: 0 0 0 4px rgba(199, 91, 60, 0.18), 0 0 16px rgba(232, 155, 60, 0.30);
+   492→}
+   493→
+   494→/* ============================================================
+   495→   SANKOFA — Bulles chat WhatsApp-style (restylées palette Sankofa)
+   496→   ============================================================ */
+   497→.aya-chat-bg {
+   498→  /* Layered warm background : subtle photo texture (hero-savane.jpg) + Adinkra
+   499→     pattern texture + radial warm glows. The cream color dominates (~95% opacity
+   500→     over photo, ~97% over pattern) so messages stay readable while the textures
+   501→     subtly bleed through (photo ~5%, pattern ~3%). */
+   502→  background-color: var(--aya-chat-bg);
+   503→  background-image:
+   504→    /* Layer 5 (top) — Warm radial glows */
+   505→    radial-gradient(circle at 18% 22%, rgba(199, 91, 60, 0.08) 0, transparent 45%),
+   506→    radial-gradient(circle at 82% 78%, rgba(232, 155, 60, 0.09) 0, transparent 50%),
+   507→    /* Layer 4 — Cream overlay at 97% opacity (fades Adinkra pattern to ~3%) */
+   508→    linear-gradient(180deg, rgba(251, 243, 228, 0.97) 0%, rgba(251, 243, 228, 0.97) 100%),
+   509→    /* Layer 3 — Adinkra pattern texture (tiled, subtle cultural motif) */
+   510→    url("/images/v3/pattern-adinkra.jpg"),
+   511→    /* Layer 2 — Cream overlay at 95% opacity (fades hero-savane photo to ~5%) */
+   512→    linear-gradient(180deg, rgba(251, 243, 228, 0.95) 0%, rgba(251, 243, 228, 0.95) 100%),
+   513→    /* Layer 1 (bottom) — Photo texture (hero-savane at golden sunset) */
+   514→    url("/images/v3/hero-savane.jpg");
+   515→  background-size: cover, cover, cover, 240px 240px, cover, cover;
+   516→  background-position: center, center, center, 0 0, center, center;
+   517→  background-repeat: no-repeat, no-repeat, no-repeat, repeat, no-repeat, no-repeat;
+   518→  background-attachment: local, local, local, local, local, local;
+   519→}
+   520→
+   521→.aya-bubble-assistant {
+   522→  background-color: var(--aya-bubble-assistant);
+   523→  color: var(--aya-bubble-assistant-text);
+   524→  border-radius: 0.85rem 0.85rem 0.85rem 0.2rem;
+   525→  border: 1px solid rgba(244, 199, 123, 0.25);
+   526→  box-shadow: 0 1px 2px rgba(92, 42, 26, 0.18);
+   527→}
+   528→
+   529→.aya-bubble-user {
+   530→  background-color: var(--aya-bubble-user);
+   531→  color: var(--aya-bubble-user-text);
+   532→  border-radius: 0.85rem 0.85rem 0.2rem 0.85rem;
+   533→  box-shadow: 0 1px 2px rgba(92, 42, 26, 0.15);
+   534→}
+   535→
+   536→/* Bulle compagnon — check-ins / quick actions (mode compagnon de trajet) */
+   537→.aya-bubble-companion {
+   538→  background-color: rgba(168, 69, 31, 0.15);
+   539→  color: var(--text-on-light);
+   540→  border-radius: 0.85rem 0.85rem 0.85rem 0.2rem;
+   541→  border: 1px solid rgba(199, 91, 60, 0.2);
+   542→  box-shadow: 0 1px 2px rgba(92, 42, 26, 0.1);
+   543→}
+   544→
+   545→/* Custom scrollbar warm */
+   546→.aya-scroll {
+   547→  scrollbar-width: thin;
+   548→  scrollbar-color: var(--terracotta) transparent;
+   549→}
+   550→.aya-scroll::-webkit-scrollbar {
+   551→  width: 6px;
+   552→  height: 6px;
+   553→}
+   554→.aya-scroll::-webkit-scrollbar-track {
+   555→  background: transparent;
+   556→}
+   557→.aya-scroll::-webkit-scrollbar-thumb {
+   558→  background-color: rgba(199, 91, 60, 0.55);
+   559→  border-radius: 9999px;
+   560→}
+   561→.aya-scroll::-webkit-scrollbar-thumb:hover {
+   562→  background-color: var(--terracotta);
+   563→}
+   564→
+   565→/* Nav transition — smooth auto-hide (Instagram/YouTube style) */
+   566→.nav-transition {
+   567→  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease-out;
+   568→  will-change: transform, opacity;
+   569→}
+   570→@media (prefers-reduced-motion: reduce) {
+   571→  .nav-transition {
+   572→    transition: opacity 0.1s ease-out;
+   573→  }
+   574→}
+   575→
+   576→/* Admin dashboard — scrollbar sur fond terre-brulee sombre */
+   577→.aya-admin-scroll {
+   578→  scrollbar-width: thin;
+   579→  scrollbar-color: rgba(244, 199, 123, 0.5) transparent;
+   580→}
+   581→.aya-admin-scroll::-webkit-scrollbar {
+   582→  width: 6px;
+   583→  height: 6px;
+   584→}
+   585→.aya-admin-scroll::-webkit-scrollbar-track {
+   586→  background: transparent;
+   587→}
+   588→.aya-admin-scroll::-webkit-scrollbar-thumb {
+   589→  background-color: rgba(244, 199, 123, 0.45);
+   590→  border-radius: 9999px;
+   591→}
+   592→.aya-admin-scroll::-webkit-scrollbar-thumb:hover {
+   593→  background-color: rgba(244, 199, 123, 0.8);
+   594→}
+   595→
+   596→/* ============================================================
+   597→   Animations typing indicator
+   598→   ============================================================ */
+   599→@keyframes aya-typing-bounce {
+   600→  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+   601→  30% { transform: translateY(-5px); opacity: 1; }
+   602→}
+   603→.aya-typing-dot {
+   604→  animation: aya-typing-bounce 1.4s infinite ease-in-out;
+   605→  will-change: transform;
+   606→}
+   607→.aya-typing-dot:nth-child(2) { animation-delay: 0.2s; }
+   608→.aya-typing-dot:nth-child(3) { animation-delay: 0.4s; }
+   609→
+   610→@keyframes aya-msg-in {
+   611→  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+   612→  to { opacity: 1; transform: translateY(0) scale(1); }
+   613→}
+   614→.aya-msg-in {
+   615→  animation: aya-msg-in 0.28s ease-out;
+   616→}
+   617→
+   618→/* ============================================================
+   619→   Motif Bogolan (texture de fond subtile, opacité 5-8%)
+   620→   ============================================================ */
+   621→.aya-bogolan-bg {
+   622→  background-image:
+   623→    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='none' stroke='%235C2A1A' stroke-width='1' opacity='0.6'%3E%3Cpath d='M0 40 L20 20 L40 40 L60 20 L80 40' /%3E%3Cpath d='M0 60 L20 40 L40 60 L60 40 L80 60' /%3E%3Ccircle cx='40' cy='40' r='3' /%3E%3C/g%3E%3C/svg%3E");
+   624→  background-size: 80px 80px;
+   625→  background-repeat: repeat;
+   626→  opacity: 0.06;
+   627→}
+   628→
+   629→/* ============================================================
+   630→   Bordure Kita (motif géométrique répété)
+   631→   ============================================================ */
+   632→.aya-kita-border-top {
+   633→  border-top: 4px solid transparent;
+   634→  border-image-source: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='8' viewBox='0 0 40 8'%3E%3Crect x='0' y='0' width='8' height='8' fill='%239B3F1F'/%3E%3Crect x='8' y='0' width='4' height='8' fill='%23E89B3C'/%3E%3Crect x='12' y='0' width='4' height='8' fill='%23C75B3C'/%3E%3Crect x='16' y='0' width='8' height='8' fill='%23F4C77B'/%3E%3Crect x='24' y='0' width='4' height='8' fill='%237B4B5C'/%3E%3Crect x='28' y='0' width='4' height='8' fill='%239B3F1F'/%3E%3Crect x='32' y='0' width='8' height='8' fill='%23E89B3C'/%3E%3C/svg%3E");
+   635→  border-image-slice: 1;
+   636→  border-image-repeat: round;
+   637→}
+   638→
+   639→/* ============================================================
+   640→   3D CSS utilities (rotateY, preserve-3d, perspective)
+   641→   ============================================================ */
+   642→.aya-perspective-near {
+   643→  perspective: 800px;
+   644→}
+   645→.aya-perspective-far {
+   646→  perspective: 1600px;
+   647→}
+   648→.aya-3d-flat {
+   649→  transform-style: preserve-3d;
+   650→}
+   651→.aya-3d-tilt-y {
+   652→  transform: rotateX(15deg) rotateY(-12deg);
+   653→  transform-style: preserve-3d;
+   654→}
+   655→.aya-3d-cylinder {
+   656→  transform-style: preserve-3d;
+   657→}
+   658→
+   659→/* ============================================================
+   660→   Particles & stars canvases (positioning helpers)
+   661→   ============================================================ */
+   662→.aya-canvas-absolute {
+   663→  position: absolute;
+   664→  inset: 0;
+   665→  width: 100%;
+   666→  height: 100%;
+   667→  pointer-events: none;
+   668→}
+   669→
+   670→/* ============================================================
+   671→   Pulse pin (carte CI)
+   672→   ============================================================ */
+   673→@keyframes aya-pin-pulse {
+   674→  0% { transform: scale(0.7); opacity: 0.9; }
+   675→  70% { transform: scale(2.4); opacity: 0; }
+   676→  100% { transform: scale(2.4); opacity: 0; }
+   677→}
+   678→.aya-pin-pulse {
+   679→  animation: aya-pin-pulse 2.2s ease-out infinite;
+   680→  will-change: transform, opacity;
+   681→}
+   682→
+   683→/* ============================================================
+   684→   Scroll indicator (chevron bouncy)
+   685→   ============================================================ */
+   686→@keyframes aya-chevron-bounce {
+   687→  0%, 100% { transform: translateY(0); opacity: 0.7; }
+   688→  50% { transform: translateY(8px); opacity: 1; }
+   689→}
+   690→.aya-chevron-bounce {
+   691→  animation: aya-chevron-bounce 1.8s ease-in-out infinite;
+   692→}
+   693→
+   694→/* ============================================================
+   695→   Letter reveal for hero title
+   696→   ============================================================ */
+   697→@keyframes aya-letter-in {
+   698→  0% { opacity: 0; transform: translateY(28px) rotateX(-90deg); }
+   699→  60% { opacity: 1; transform: translateY(-4px) rotateX(8deg); }
+   700→  100% { opacity: 1; transform: translateY(0) rotateX(0); }
+   701→}
+   702→
+   703→/* ============================================================
+   704→   Star twinkle (footer canvas, fallback CSS)
+   705→   ============================================================ */
+   706→@keyframes aya-twinkle {
+   707→  0%, 100% { opacity: 0.25; }
+   708→  50% { opacity: 1; }
+   709→}
+   710→
+   711→/* ============================================================
+   712→   Sun rise animation (hero)
+   713→   ============================================================ */
+   714→@keyframes aya-sun-rise {
+   715→  0% { transform: translateY(120%); opacity: 0; }
+   716→  60% { opacity: 1; }
+   717→  100% { transform: translateY(0); opacity: 1; }
+   718→}
+   719→.aya-sun-rise {
+   720→  animation: aya-sun-rise 2.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+   721→  will-change: transform, opacity;
+   722→}
+   723→
+   724→/* ============================================================
+   725→   Adinkra floating in hero background (low opacity)
+   726→   ============================================================ */
+   727→@keyframes aya-float-slow {
+   728→  0%, 100% { transform: translateY(0) rotate(0deg); }
+   729→  50% { transform: translateY(-14px) rotate(3deg); }
+   730→}
+   731→.aya-float-slow {
+   732→  animation: aya-float-slow 12s ease-in-out infinite;
+   733→  will-change: transform;
+   734→}
+   735→.aya-float-slow-delayed {
+   736→  animation: aya-float-slow 14s ease-in-out infinite;
+   737→  animation-delay: -3s;
+   738→  will-change: transform;
+   739→}
+   740→
+   741→/* ============================================================
+   742→   Firefly (lucioles dorées dans hero)
+   743→   ============================================================ */
+   744→@keyframes aya-firefly {
+   745→  0%, 100% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+   746→  20% { opacity: 1; }
+   747→  50% { transform: translate(40px, -30px) scale(1.1); }
+   748→  80% { opacity: 0.8; }
+   749→}
+   750→.aya-firefly {
+   751→  animation: aya-firefly 6s ease-in-out infinite;
+   752→  will-change: transform, opacity;
+   753→}
+   754→
+   755→/* ============================================================
+   756→   Baobab 3D tilt (hero foreground, scroll-driven)
+   757→   ============================================================ */
+   758→.aya-baobab-3d {
+   759→  transform-style: preserve-3d;
+   760→  will-change: transform;
+   761→}
+   762→
+   763→/* ============================================================
+   764→   TPE clock — segment pulse animation
+   765→   ============================================================ */
+   766→@keyframes aya-segment-pulse {
+   767→  0%, 100% { opacity: 0.85; }
+   768→  50% { opacity: 1; filter: brightness(1.15); }
+   769→}
+   770→.aya-segment-pulse {
+   771→  animation: aya-segment-pulse 1.8s ease-in-out infinite;
+   772→  will-change: opacity;
+   773→}
+   774→
+   775→/* ============================================================
+   776→   Adinkra rotating around TPE clock
+   777→   ============================================================ */
+   778→@keyframes aya-rotate-slow {
+   779→  from { transform: rotate(0deg); }
+   780→  to { transform: rotate(360deg); }
+   781→}
+   782→.aya-rotate-slow {
+   783→  animation: aya-rotate-slow 60s linear infinite;
+   784→  will-change: transform;
+   785→}
+   786→.aya-rotate-slow-reverse {
+   787→  animation: aya-rotate-slow 80s linear infinite reverse;
+   788→  will-change: transform;
+   789→}
+   790→
+   791→/* ============================================================
+   792→   CI Map — pin ripple on hover
+   793→   ============================================================ */
+   794→@keyframes aya-ripple {
+   795→  0% { transform: scale(0.4); opacity: 1; }
+   796→  100% { transform: scale(3.5); opacity: 0; }
+   797→}
+   798→.aya-ripple {
+   799→  animation: aya-ripple 1.8s ease-out infinite;
+   800→  will-change: transform, opacity;
+   801→}
+   802→
+   803→/* ============================================================
+   804→   Connection lines (CI map network)
+   805→   ============================================================ */
+   806→@keyframes aya-dash-flow {
+   807→  to { stroke-dashoffset: -16; }
+   808→}
+   809→.aya-dash-flow {
+   810→  animation: aya-dash-flow 1.2s linear infinite;
+   811→  will-change: stroke-dashoffset;
+   812→}
+   813→
+   814→/* ============================================================
+   815→   Shooting star (footer)
+   816→   ============================================================ */
+   817→@keyframes aya-shooting-star {
+   818→  0% { transform: translate(0, 0); opacity: 0; }
+   819→  10% { opacity: 1; }
+   820→  60% { opacity: 1; }
+   821→  100% { transform: translate(-360px, 220px); opacity: 0; }
+   822→}
+   823→.aya-shooting-star {
+   824→  animation: aya-shooting-star 2.6s ease-out;
+   825→  will-change: transform, opacity;
+   826→}
+   827→
+   828→/* ============================================================
+   829→   Moon glow (footer)
+   830→   ============================================================ */
+   831→@keyframes aya-moon-glow {
+   832→  0%, 100% { box-shadow: 0 0 24px rgba(244, 199, 123, 0.35), 0 0 8px rgba(232, 155, 60, 0.20); }
+   833→  50% { box-shadow: 0 0 40px rgba(244, 199, 123, 0.55), 0 0 16px rgba(232, 155, 60, 0.30); }
+   834→}
+   835→.aya-moon-glow {
+   836→  animation: aya-moon-glow 8s ease-in-out infinite;
+   837→  will-change: box-shadow;
+   838→}
+   839→
+   840→/* ============================================================
+   841→   Emergency button pulse (footer)
+   842→   ============================================================ */
+   843→@keyframes aya-emergency-pulse {
+   844→  0%, 100% { transform: scale(1); box-shadow: 0 8px 24px var(--emg-color, rgba(199, 91, 60, 0.4)); }
+   845→  50% { transform: scale(1.018); box-shadow: 0 12px 36px var(--emg-color, rgba(199, 91, 60, 0.55)), 0 0 32px var(--emg-color, rgba(232, 155, 60, 0.35)); }
+   846→}
+   847→.aya-emergency-pulse {
+   848→  animation: aya-emergency-pulse 3s ease-in-out infinite;
+   849→  will-change: transform, box-shadow;
+   850→}
+   851→
+   852→/* ============================================================
+   853→   Counter (animated number on scroll)
+   854→   ============================================================ */
+   855→@keyframes aya-counter-pop {
+   856→  0% { transform: scale(0.85); opacity: 0; }
+   857→  100% { transform: scale(1); opacity: 1; }
+   858→}
+   859→.aya-counter-pop {
+   860→  animation: aya-counter-pop 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+   861→}
+   862→
+   863→/* ============================================================
+   864→   Auditor avatar pulse (trust section)
+   865→   ============================================================ */
+   866→@keyframes aya-avatar-pulse {
+   867→  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(232, 155, 60, 0.4); }
+   868→  50% { transform: scale(1.05); box-shadow: 0 0 0 6px rgba(232, 155, 60, 0); }
+   869→}
+   870→.aya-avatar-pulse {
+   871→  animation: aya-avatar-pulse 2.8s ease-in-out infinite;
+   872→  will-change: transform, box-shadow;
+   873→}
+   874→
+   875→/* ============================================================
+   876→   Testimonial card depth (cylinder)
+   877→   ============================================================ */
+   878→.aya-card-3d {
+   879→  transform-style: preserve-3d;
+   880→  box-shadow: 0 20px 40px rgba(92, 42, 26, 0.25), 0 8px 16px rgba(92, 42, 26, 0.18);
+   881→}
+   882→.aya-card-3d-active {
+   883→  box-shadow: 0 24px 60px rgba(232, 155, 60, 0.40), 0 8px 24px rgba(199, 91, 60, 0.30);
+   884→}
+   885→
+   886→/* ============================================================
+   887→   Reduced motion — DÉSACTIVE toutes les animations
+   888→   ============================================================ */
+   889→@media (prefers-reduced-motion: reduce) {
+   890→  *,
+   891→  *::before,
+   892→  *::after {
+   893→    animation-duration: 0.001ms !important;
+   894→    animation-iteration-count: 1 !important;
+   895→    transition-duration: 0.001ms !important;
+   896→    scroll-behavior: auto !important;
+   897→  }
+   898→  .aya-chevron-bounce,
+   899→  .aya-typing-dot,
+   900→  .aya-pin-pulse,
+   901→  .aya-msg-in,
+   902→  .aya-sun-rise,
+   903→  .aya-float-slow,
+   904→  .aya-float-slow-delayed,
+   905→  .aya-firefly,
+   906→  .aya-segment-pulse,
+   907→  .aya-rotate-slow,
+   908→  .aya-rotate-slow-reverse,
+   909→  .aya-ripple,
+   910→  .aya-dash-flow,
+   911→  .aya-shooting-star,
+   912→  .aya-moon-glow,
+   913→  .aya-emergency-pulse,
+   914→  .aya-avatar-pulse {
+   915→    animation: none !important;
+   916→  }
+   917→}
+   918→
+   919→/* ============================================================
+   920→   Card warm variant
+   921→   ============================================================ */
+   922→.aya-card-warm {
+   923→  background: linear-gradient(180deg, #FFFFFF 0%, #FFF8E7 100%);
+   924→  border: 1px solid #E6D2A8;
+   925→  box-shadow: 0 4px 14px rgba(92, 42, 26, 0.08);
+   926→}
+   927→.aya-card-terracotta {
+   928→  background-color: #A8451F;
+   929→  background-image: linear-gradient(180deg, #A8451F 0%, #7A2E12 100%);
+   930→  color: var(--text-on-dark);
+   931→  box-shadow: 0 8px 28px rgba(155, 63, 31, 0.32);
+   932→}
+   933→.aya-card-ocre {
+   934→  background-color: #7A2E12;
+   935→  background-image: linear-gradient(180deg, #7A2E12 0%, #3D1A0E 100%);
+   936→  color: var(--text-on-dark);
+   937→  box-shadow: 0 8px 28px rgba(92, 42, 26, 0.32);
+   938→}
+   939→.aya-card-elevated {
+   940→  background-color: #A8451F;
+   941→  background-image: linear-gradient(180deg, #A8451F 0%, #7A2E12 70%, #3D1A0E 100%);
+   942→  color: var(--text-on-dark);
+   943→  box-shadow: 0 24px 60px rgba(155, 63, 31, 0.40), 0 8px 24px rgba(232, 155, 60, 0.30);
+   944→}
+   945→
+   946→/* ============================================================
+   947→   Adinkra symbol utilities (recolorable stroke)
+   948→   ============================================================ */
+   949→.aya-adinkra {
+   950→  stroke: currentColor;
+   951→  fill: none;
+   952→  stroke-width: 2.2;
+   953→  stroke-linecap: round;
+   954→  stroke-linejoin: round;
+   955→}
+   956→
+   957→

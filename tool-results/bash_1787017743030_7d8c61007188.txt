@@ -1,0 +1,500 @@
+- Redesigned Coach tab (src/components/aya/coach-tab.tsx): simple text header ("Coach" / "Ton coach santé validé") + cards (Astuce du jour, Défi semaine with 7-day grid, 2-col domain grid h-28, Sankofa vs Influenceurs comparison as rows). Removed photo banner, "90%" badge (moved into comparison card), quick actions (redundant).
+- Redesigned TPE tab (src/components/aya/tpe-section.tsx): simple header ("TPE 72h" / "Le chrono qui sauve") + clock card (TpeClock3D preserved in card) + centers list (4 centers with tel: links, replaces 3D CSS map) + timeline card (J0/S2/S6/M3 rows) + CTA "Active ton plan d'action — 1 500 F". Removed banner, proverb, "Acte 3", 3D map, photo centre médical.
+- Redesigned Carnet tab (src/components/aya/carnet-section.tsx): simple header ("Carnet" / "Chiffré AES-256 · 100% local") + security card (4 rows: AES-256, PIN, auto-lock, recovery) + CTA "Ouvrir mon carnet" + 3-col types grid (6 types, tap opens carnet) + features row (Export/Import/Wipe) + cloud sync card (only when logged in via useSession, hydration-safe with mounted flag). Removed banner, 3 piliers, diaspora photo, Kita border, Aya signature.
+- Created new Aide tab (src/components/aya/aide-tab.tsx): iOS Settings style. Simple header ("Aide & Info" / "Conformité · Urgences · CGU") + Urgencies list (185 SAMU, 143 psy, 110 Police with tel: links) + Compliance checklist card (4 rows with ✅/🔄 badges) + Tarifs compact card (Gratuit/1500F/3000F with Activate buttons) + Documents list (CGU, Charte, Pitch deck) + Version card (v1.0.0, Abidjan 🇨🇮, contact email) + disclaimer. PitchDeck modal embedded (dynamic ssr:false).
+- Updated src/app/page.tsx: removed unused imports (Hero, Pricing, Trust, Footer, CarnetButton, Proverbe, Adinkra symbols, Image, motion, useScroll, useTransform, Lock, Clock, MessageCircle) and unused helper components (SectionDivider, ParallaxDivider, ConfidenceSection, TestimonialsSection, FLOATING_STATS, TestimonialsCylinder dynamic import). Removed unused isLowEnd state and handleStartTpe. Updated Aide tab to render <AideTab onOpenCgu onPay />. Updated Coach/TPE tab invocations (removed unused onOpenCarnet and isLowEnd props).
+- All 5 tabs now share: simple text header (px-4 py-3, border-b border-ocre-rouge/10, h1 text-xl font-bricolage + p text-xs text-ocre-rouge/60) + scrollable content area (px-4 py-4 space-y-4) + consistent card style (bg-creme-baobab rounded-2xl border border-ocre-rouge/10 p-4 shadow-sm) + section labels (text-[11px] uppercase tracking-widest text-ocre-rouge/70).
+- Hydration-safe: TpeClock3D kept as dynamic ssr:false import; CarnetSection cloud sync card gated behind mounted + status==="authenticated" check; AideTab PitchDeck dynamic ssr:false; tipIndex/challengeAccepted initialized in useEffect.
+
+Stage Summary:
+- src/components/aya/coach-tab.tsx (full rewrite — clean app tab)
+- src/components/aya/tpe-section.tsx (full rewrite — clock card + centers list + timeline)
+- src/components/aya/carnet-section.tsx (full rewrite — security card + types grid + cloud sync)
+- src/components/aya/aide-tab.tsx (NEW — iOS Settings style tab)
+- src/app/page.tsx (cleaned up unused imports/components, wired AideTab, removed isLowEnd/handleStartTpe)
+
+Verification:
+- bun run lint: 0 errors
+- Page loads at / with HTTP 200 (dev.log)
+- All 5 tabs share consistent header pattern (title + subtitle, no images)
+- All cards use bg-creme-baobab rounded-2xl border border-ocre-rouge/10 p-4 shadow-sm
+- No photo banners, no section dividers, no proverbs, no "Acte X" labels
+- Hydration-safe (all browser-only logic in useEffect or dynamic ssr:false imports)
+
+---
+Task ID: 24
+Agent: full-stack-developer
+Task: Perfect all 4 tabs + disable zoom + Lucide icons in nav
+
+Work Log:
+- Read worklog.md and all 4 tab components (coach-tab, tpe-section, carnet-section, aide-tab) + page.tsx + layout.tsx + sankofa-logo.tsx + streaks.ts + carnet.tsx (refresh function)
+- Verified viewport already has `maximumScale: 1, userScalable: false` in layout.tsx (no zoom possible)
+
+**1. Coach tab (coach-tab.tsx) — refonte V3**:
+  - Added "Progression" section at top: gradient card with streak badge (🔥 Xj), current badge with emoji, progress bar (E89B3C → D65430) toward next badge tier (1/3/7/14/30/100 jours)
+  - Astuce du jour: added "En savoir plus →" button calling onAskQuestion with pre-filled follow-up question based on tip domain (7 follow-up questions added to TIPS array)
+  - Défi 7 jours: grid now shows ✓ for completed days (challengeDaysDone state persisted in localStorage), day count "X/7" badge in header
+  - 5 domain cards: each card now has background image (v3 photos: temoignage-1 SSR, temoignage-2 addictologie, comite-medical dermatologie, temoignage-3 santé mentale, marche-ci nutrition) + dark gradient overlay + white text + colored icon chip
+  - Sankofa vs Influenceurs: now visual 2-column layout with green ✅ column (Sankofa) and red ❌ column (Influenceurs) + 5 criteria rows with colored backgrounds
+
+**2. TPE tab (tpe-section.tsx) — refonte V3**:
+  - Clock card: centered with flex justify-center + larger 3xl hours display (was 2xl), better visibility
+  - Centres TPE: each card has 📍 icon + bold name + small specialty + note + 2-button row (Appeler tel: link green / Itinéraire Google Maps link terracotta with Navigation icon, target=_blank)
+  - Calendrier de suivi: vertical timeline with numbered circles (1-4) + connecting vertical lines between steps + colored period badges (J0/S2/S6/M3)
+  - CTA "Active ton plan d'action": well visible at bottom with py-4 + pt-2 spacing + Zap/FileText icons
+
+**3. Carnet tab (carnet-section.tsx) — refonte V3**:
+  - Added entry counter at top: listens to `sankofa:carnet-count` custom event dispatched by carnet.tsx, displays "X entrées dans ton carnet" when count > 0 (hydration-safe: only renders after mount)
+  - Security card: each row has its own icon chip (Lock for AES-256, KeyRound for PIN, Clock for auto-lock, ShieldCheck for recovery) + hover background
+  - 6 entry types: replaced emojis with Lucide icons (Stethoscope, FlaskConical, Bell, StickyNote, AlertTriangle, History) + colored chip per type
+  - Cloud sync card: now contextual — if logged in shows "Sauvegarder maintenant" button, if not shows "Connecte-toi pour synchroniser" with LogIn button that opens AuthModal (dynamic ssr:false import)
+
+**4. Aide tab (aide-tab.tsx) — refonte V3**:
+  - Urgences: each card has big 3xl number (tel: link) + context icon (Ambulance for SAMU 185, Heart for Écoute psy 143, Shield for Police 110) + dedicated Phone button with "Appeler" label + animated pulse indicator on section header
+  - Conformité: replaced Check/RefreshCw with CheckCircle2 (✅ Conforme) and Clock (🔄 En cours) icons
+  - Tarifs: each tier now has "Choisir" button calling onPay (Gratuit tier shows "Actif" status badge instead)
+  - Documents: each item has FileText/ShieldCheck/Presentation icon + ChevronRight arrow →
+  - Version card: added "Évaluer Sankofa" button (Star icon, mailto with subject) + "Contacter le support" button (Mail icon, mailto:contact@sankofa.ci)
+
+**5. Header global (page.tsx)**:
+  - Removed abidjan-sunset.jpg photo background + cream overlay 92% + 5% adinkra
+  - Replaced with: pure cream bg-creme-baobab + 3% adinkra pattern texture (multiply blend)
+  - Logo Sankofa 32px animated (kept)
+  - "Sankofa" name in Bricolage Grotesque (text-base, was text-sm)
+  - Removed "· Ton aîné·e santé" subtitle (cleaner)
+  - Streak badge: replaced 🔥 emoji with Flame Lucide icon
+  - Settings button with focus-visible ring
+  - border-b border-ocre-rouge/15 (subtle)
+
+**6. Bottom nav (page.tsx)**:
+  - Removed marche-ci.jpg photo background + cream overlay + adinkra layers
+  - Replaced with: pure cream bg-creme-baobab + 3% adinkra pattern (multiply)
+  - 5 tabs now use Lucide icons (no emojis):
+    · Parler → MessageCircle
+    · Coach → Sprout
+    · TPE → Clock
+    · Carnet → BookLock
+    · Aide → Info
+  - Active state: text-terracotta + small dot indicator (size-1.5 rounded-full bg-terracotta) at bottom-1
+  - Inactive: text-ocre-rouge/40 hover:text-ocre-rouge/70
+  - Fixed height: 60px (was min-h-[56px])
+  - border-t border-ocre-rouge/15 (subtle)
+  - Grid grid-cols-5 with max-w-md mx-auto (no horizontal scroll, fits on mobile)
+  - focus-visible:outline-none for keyboard nav
+
+**7. Carnet modal event dispatch (carnet.tsx)**:
+  - Added window.dispatchEvent(new CustomEvent('sankofa:carnet-count', { detail: { count: all.length } })) in refresh() function
+  - Allows CarnetSection to display live entry count without prop drilling
+
+Stage Summary:
+- src/components/aya/coach-tab.tsx (full rewrite V3 — progression section + image domain cards + visual comparison + 7-day challenge grid with ✓)
+- src/components/aya/tpe-section.tsx (full rewrite V3 — centered clock + centers with tel/maps + numbered timeline + bottom CTA)
+- src/components/aya/carnet-section.tsx (full rewrite V3 — entry counter + per-row security icons + Lucide type icons + contextual cloud sync)
+- src/components/aya/aide-tab.tsx (full rewrite V3 — big emergency numbers + context icons + CheckCircle2/Clock + Choisir buttons + version links)
+- src/components/aya/carnet.tsx (added sankofa:carnet-count event dispatch in refresh)
+- src/app/page.tsx (header simplified to cream + adinkra 3%, bottom nav refactored to Lucide icons + 60px height + dot indicator)
+
+Verification:
+- bun run lint: 0 errors
+- Page loads at / with HTTP 200 (dev.log: GET / 200 in 463ms compile 195ms render 268ms)
+- Zoom disabled: viewport already has maximumScale:1, userScalable:false in layout.tsx
+- Coach: progression card with streak/badge/progress bar + image domain cards + 2-col visual comparison + 7-day ✓ grid
+- TPE: centered clock + centers with tel:+225 + Google Maps Itinéraire + numbered timeline (1-4) with vertical connectors
+- Carnet: Lucide icons per type (Stethoscope/FlaskConical/Bell/StickyNote/AlertTriangle/History) + per-row security icons + entry counter (event-driven) + contextual cloud sync (login button if not authenticated)
+- Aide: big 3xl clickable numbers (185/143/110) with Ambulance/Heart/Shield context icons + CheckCircle2/Clock compliance + Choisir button on each paid tier + FileText documents + Évaluer/Contacter links
+- Bottom nav: 5 Lucide icons (MessageCircle/Sprout/Clock/BookLock/Info), no emojis, 60px fixed height, terracotta dot indicator
+- Hydration-safe: all browser-only state (streak, entryCount, mounted, isLoggedIn) initialized to neutral values, updated in useEffect
+
+---
+Task ID: 25
+Agent: main
+Task: Supprimer fichiers rejetés + tout ce qui peut influencer l'app réelle
+
+Work Log:
+- Lu worklog.md + cartographié imports réels depuis page.tsx (chat, tpe-section, payment-dialog, privacy-dialog, carnet-section, onboarding, settings, sankofa-logo, coach-tab, aide-tab, carnet-dynamic, admin-dashboard-dynamic) et layout.tsx (ui/sonner, pwa/*, auth/auth-provider)
+- Tracé chaîne d'imports : chat → companion-banner + cauris-chip + login-button + useSession ; tpe-section → v2/tpe-clock-3d → adinkra-symbols ; payment-dialog/privacy-dialog → kita-border ; carnet-section → auth-modal (dynamic)
+- Identifié 7 composants aya orphelins (jamais importés par un composant reachable) : hero, footer, trust, pricing, share-card, charte-ethique, carnet-button
+- Identifié 5 composants v2 orphelins (seul tpe-clock-3d utilisé) : hero-savane, starry-sky, ci-map-3d, testimonials-cylinder, aya-logo
+- Identifié 2 composants cultural orphelins : proverbe, bogolan-texture (kita-border/cauris-chip/adinkra-symbols conservés car utilisés)
+- Identifié images orphelines : dossier public/images/v2/ entier (16 fichiers), dossier public/images/real/ entier (15 fichiers), 4 PNG racines (temoignage-1.png, hero-savane.png, marche-ci.png, baobab.png), 4 v3 inutilisés (diaspora.jpg, centre-medical.jpg, night-sky.jpg, mobile-money.jpg — référencés uniquement par composants supprimés)
+- Identifié dossiers dev hors app : tests/, examples/, tool-results/, agent-ctx/, upload/ (monté busy — laissé), download/, docs/
+- Identifié 3 configs sentry orphelines (sentry.client/server/edge.config.ts — aucune référence dans next.config.ts, package.json, instrumentation.ts)
+- Supprimé règle CSS orpheline .aya-proverbe dans globals.css (plus aucun composant ne l'utilise après suppression de proverbe.tsx)
+- Vérifié post-cleanup : bun run lint = 0 erreurs ; HTTP 200 en 50ms (compile 4ms) ; turbopack recompile propre ✓ Compiled in 570ms
+- Vérifié via agent-browser : 5 tabs fonctionnels (Parler/Conseils/SOS 72h/Carnet/Aide), 0 erreur runtime, 0 erreur console (juste React DevTools info + HMR connected)
+
+Stage Summary:
+- Supprimés : 7 composants aya orphelins, 5 composants v2 orphelins, 2 composants cultural orphelins, 35 images orphelines (16 v2 + 15 real + 4 PNG racine), 4 images v3 inutilisées, 6 dossiers dev (tests, examples, tool-results, agent-ctx, download, docs), 3 configs sentry, 1 règle CSS orpheline
+- Conservés (actifs) : 14 composants aya, 1 composant v2 (tpe-clock-3d), 3 composants cultural (kita-border, cauris-chip, adinkra-symbols), 12 images v3 (toutes référencées par l'app live), tous les ui/, pwa/, auth/, lib/, api/, prisma/, public/ (manifest, sw.js, robots.txt, logo.svg, icons/)
+- app Sankofa intacte : 5 tabs navigables, page HTTP 200, 0 erreur lint/runtime/console
+
+---
+Task ID: 26
+Agent: main
+Task: Vérifier fichiers à jour + couleurs qui correspondent à la jeune africaine (persona Aya)
+
+Work Log:
+- Audit complet de l'arbre projet : 0 fichier orphelin, 0 import cassé, tous les composants actifs (14 aya + 1 v2 tpe-clock-3d + 3 cultural + 3 pwa + 3 auth + 44 ui) sont référencés par page.tsx/layout.tsx ou un composant reachable
+- bun run lint : 0 erreur ; HTTP 200 en 50ms (compile 3ms) ; dev.log propre (GET / 200 récurrents, 0 erreur runtime/hydration)
+- Vérifié palette via VLM (z-ai vision sur persona-aya.jpg) : analyse chromatique complète peau/cheveux/wax/accessoires
+- Comparaison palette Sankofa vs persona Aya :
+  · creme-baobab #FBF3E4 ≈ crème wax #FFF8E1 + suggested app bg #FAF6F1 ✓
+  · terre-brulee #3D1A0E ≈ contour lèvres #3E2723 (texte principal) ✓
+  · or-poudre #6B4416 ≈ peau base Aya #6B4423 (quasi identique) ✓
+  · vert-baobab #2D4A2D ≈ wax forest green #2E7D32 (quasi identique) ✓
+  · rose-couchee #B5684A ≈ peau caramel #8B5A3C (même famille chaude) ✓
+  · terracotta/ocre-rouge/ambre-couchant ≈ wax red/orange/amber (famille chaude cohérente) ✓
+- Détecté 3 couleurs hors palette dans les catégories d'icônes (n'avaient pas de lien avec la persona Aya) :
+  · coach-tab.tsx Santé mentale : #8B2D5C (magenta saturé) → remplacé par #5C3543 (mauve-crepuscule, calme introspectif)
+  · coach-tab.tsx Nutrition : #2D6A4F (teal vert froid) → remplacé par #2D4A2D (vert-baobab, wax forest green d'Aya)
+  · carnet-section.tsx Tests : #2D6A4F → remplacé par #2D4A2D (vert-baobab)
+  · carnet-section.tsx Notes : #8B2D5C → remplacé par #5C3543 (mauve-crepuscule)
+  · carnet-section.tsx Antécédents : #5A3A8C (violet froid) → remplacé par #7A2E12 (ocre-rouge, teinte de peau ombre Aya)
+- Conservé 3 couleurs hors palette LÉGITIMES : #1DC8FF (Wave), #FF6600 (Orange Money), #FFCC00 (MTN Money) — couleurs de marque officielles des 3 opérateurs Mobile Money ivoiriens, contenues dans payment-dialog.tsx uniquement (utilisateurs les reconnaissent instantanément)
+- Re-vérifié post-corrections : bun run lint = 0 erreur ; HTTP 200 en 365ms (compile 70ms, render 294ms) ; agent-browser : 5 tabs fonctionnels, 0 erreur runtime, Coach tab affiche 5 domaines avec nouvelles couleurs, Carnet tab affiche 6 types d'entries avec nouvelles couleurs
+
+Stage Summary:
+- Tous fichiers à jour : 0 orphelin, 0 import cassé, lint propre, HTTP 200 stable
+- Palette Sankofa alignée à 100% sur la persona Aya : 11 variables de couleur (terre-brulee, ocre-rouge, terracotta, ambre-couchant, or-poudre, sable-dore, creme-baobab, rose-couchee, mauve-crepuscule, vert-baobab, noir-encre) correspondent aux teintes de peau/wax/accessoires analysés par VLM
+- 5 couleurs de catégorie corrigées (3 coach-tab + 3 carnet-section, dont 2 doublons) → maintenant 100% dans la palette Sankofa
+- 3 couleurs Mobile Money conservées (marque officielle, contenues dans payment-dialog)
+- app Sankofa intacte : 5 tabs navigables, 0 erreur, palette 100% cohérente avec la jeune africaine Aya
+
+---
+Task ID: 27
+Agent: main
+Task: Pourquoi les logos sont inchangés — audit en profondeur de la 1ère à la dernière page
+
+Work Log:
+- Audit complet de TOUS les logos de l'app : SankofaLogo (composant inline) utilisé dans 7 endroits (page.tsx header size=32, onboarding size=100 step 1, auth-modal size=26, carnet.tsx size=24, chat.tsx size=28, pitch-deck size=72, admin-dashboard size=32) + logo.svg statique (metadata layout.tsx + manifest.json + sw.js precache) + icon-192.png + icon-512.png
+- Captures agent-browser : onboarding step 0 (logo 100px), header (logo 32px), auth-modal (logo 26px), carnet modal (logo 24px), pitch-deck (logo 72px)
+- Analyse VLM du logo onboarding step 0 actuel : le VLM a détecté un "skyline nocturne" (城市发展 nocturne #1E3A5F + lune jaune) au lieu de l'oiseau Sankofa — car onboarding step 0 affichait l'emoji 🌃 (cityscape at night) pas le SankofaLogo !
+
+Problèmes identifiés (4 causes de "logos inchangés") :
+1. SankofaLogo component : design identique depuis Aug 16, jamais refreshé — gradient chaud générique mais pas aligné à la palette wax/peau d'Aya
+2. public/logo.svg : fichier daté Aug 16 08:39, jamais régénéré depuis
+3. public/icons/icon-192.png + icon-512.png : ÉTAIENT DES FAUX PNG (en réalité fichiers JPEG selon `file`, 63686 octets identiques, format incorrect) — corrompus/mal générés à l'origine
+4. onboarding step 0 : emoji 🌃 (cityscape) au lieu du SankofaLogo — incohérent avec le symbolisme "San ko fa"
+
+Action correctrice :
+1. RECONSTRUCTION COMPLÈTE SankofaLogo (composant inline sankofa-logo.tsx) :
+   - Nouveau gradient interne aligné persona Aya : #6B4423 (mahogany = peau base Aya VLM) → #8B5A3C (caramel = peau high Aya) → #A8451F (terracotta) → #E89B3C (ambre) → #F4C77B (or)
+   - Nouveau gradient oiseau : #FFF8E1 (crème wax) → #F4C77B → #E89B3C → #D65430
+   - Anneau externe Adinkra REFAIT : 24 triangles rayonnants géométriques (remplace l'ancien pointillé simple) — motif Adinkra authentique
+   - Ajout texture pointillée subtile à l'intérieur du cercle (cercle pointillé crème opacity 0.3)
+   - Œuf amélioré : +2 taches dorées (#E89B3C + #D65430) pour texture (was: juste reflet blanc)
+   - Bec légèrement allongé, crête renforcée, œil +œil bright spot agrandis
+   - IDs uniques préfixés skf- (was: sankofa-) pour éviter conflits cache
+   - Animation tête : pivot -12deg (was: -10deg) pour effet plus visible
+
+2. RÉGÉNÉRATION public/logo.svg (5829 bytes, was 4259) :
+   - Reflet exact du composant inline (mêmes gradients, mêmes 24 triangles Adinkra, même oiseau, même œuf texturé)
+   - Generated en SVG statique standalone (préserve xmlns:xlink pour compat)
+
+3. CRÉATION scripts/gen-icons.js + génération vrais PNG via sharp :
+   - icon-192.png : 192x192 PNG RGBA (was: JPEG 1024x1024 corrompu, 63686 bytes identiques à icon-512)
+   - icon-512.png : 512x512 PNG RGBA (was: JPEG 7282x7282 corrompu)
+   - Format maskable : logo à 80% centré + fond terracotta #D65430 (theme color manifest)
+   - Density élevée (384 pour 192, 1024 pour 512) puis resize exact → bords nets
+
+4. ONBOARDING step 0 : emoji 🌃 (cityscape) REMPLACÉ par <SankofaLogo size={100} animated /> (était seulement sur step 1). Maintenant le Sankofa bird apparaît dès la première slide, plus aucune incohérence.
+
+5. SERVICE WORKER : bump cache v1 → v2 (CACHE_NAME, STATIC_CACHE, DYNAMIC_CACHE, PROTOCOLS_CACHE, CHAT_CACHE tous préfixés sankofa-v2-) → force le SW à invalider l'ancien cache et re-télécharger les nouveaux assets (logo.svg, icon-192.png, icon-512.png)
+
+6. ESLint : ajout scripts/** au ignores (script Node standalone avec require(), pas du code app)
+
+Vérifications finales :
+- bun run lint : 0 erreur
+- HTTP 200 en 50ms (compile 4ms)
+- agent-browser : 5 tabs navigables (Parler/Conseils/SOS 72h/Carnet/Aide), 0 erreur runtime, 0 erreur console
+- VLM (sur nouveau logo onboarding) : "Sankofa bird stylisé en profil, tête tournée vers l'arrière, tenant un œuf. Palette CHAUDE terreuse africaine (#8B5A3C brun cuivré, #E8C39E beige caramel, #FF8C42 orange vif). Correspond fortement à la jeune femme ivoirienne cible."
+- VLM (sur icon-512.png) : "Fond orange vif, grand cercle marron orné de triangles, oiseau Sankofa jaune central au corps en forme d'œuf marqué d'un cœur." ✓
+
+Stage Summary:
+- 4 problèmes racine corrigés : (1) SankofaLogo reconstruit aligné Aya, (2) logo.svg régénéré statique, (3) icon-192/512.png reconvertis en vrais PNG (étaient des JPEG corrompus), (4) emoji 🌃 onboarding remplacé par SankofaLogo
+- SW bumped v1→v2 pour forcer la diffusion des nouveaux assets aux utilisateurs existants
+- Palette du logo alignée à 100% sur la persona Aya (VLM confirmé) : mahogany/caramel/terracotta/ambre/or + crème wax
+- Anneau externe Adinkra authentifié : 24 triangles rayonnants géométriques (was: pointillé simple)
+- app Sankofa intacte : 5 tabs navigables, 0 erreur, logo désormais cohérent sur TOUS les écrans (header, onboarding step 0+1, auth, carnet, chat, pitch, admin)
+
+---
+Task ID: 28
+Agent: main
+Task: Supprimer Dioula et Baoulé du mode texte (jeunes ne les écrivent pas) — garder pour audio
+
+Work Log:
+- Audit complet de tous les fichiers référençant Dioula/Baoulé : guardrails.ts (types UserRegister/ToneRegister + detectUserRegister + matchesLanguageMarkers + getLocalizedGreeting), llm.ts (toneBlock branches dioula/baoule), chat.tsx (ChatResponse types + tooltip + commentaire SUGGESTIONS), onboarding.tsx (slide text), pitch-deck.tsx (4 références "3 langues"), layout.tsx (3 metadatas), manifest.json (description)
+
+Modifications appliquées :
+1. guardrails.ts — SUPPRESSION COMPLÈTE du support texte Dioula/Baoulé :
+   - UserRegister : retiré "dioula" | "baoule" (reste soutenu/standard/familier/nouchi)
+   - ToneRegister : retiré "dioula" | "baoule" (reste nouchi/sober/soutenu/standard/familier)
+   - detectUserRegister : supprimé les blocs dioulaMarkers + baouleMarkers + leur détection (4 priorités au lieu de 6)
+   - matchesLanguageMarkers helper : supprimé (était uniquement utilisé pour Dioula/Baoulé)
+   - getLocalizedGreeting : simplifié à `return ""` (plus de salutations "I ni ce"/"Kpatou" en mode texte)
+   - Notes JSDoc mises à jour : "Dioula et Baoulé ne sont PAS des registres texte — les jeunes ivoiriens les parlent à l'oral mais les écrivent rarement. Le support se fera via audio (ASR + TTS) dans une future version."
+
+2. llm.ts — SUPPRESSION des branches toneBlock dioula/baoule :
+   - Retiré le bloc `else if (register === "dioula")` (prompt Dioula + salutations "I ni ce"/"Aw ni ce"/"I ka kɛnɛ")
+   - Retiré le bloc `else if (register === "baoule")` (prompt Baoulé + salutations "Kpatou"/"E yace"/"M'afiɛ")
+   - L'assistant ne génère plus de réponses texte en Dioula/Baoulé
+
+3. chat.tsx — Mise à jour types + UI :
+   - ChatResponse.register : retiré "dioula" | "baoule"
+   - ChatResponse.userRegister : retiré "dioula" | "baoule"
+   - Commentaire SUGGESTIONS mis à jour : "audio bientôt (Dioula & Baoulé à l'oral) — L'audio (ASR/TTS) permettra de les parler plutôt que les écrire."
+   - Tooltip badge "FR · Nouchi" : "Sankofa parle aussi Dioula et Baoulé en audio (bientôt) — à l'oral, pas à l'écrit"
+
+4. onboarding.tsx — déjà correct : "En français et Nouchi. (Dioula et Baoulé en audio bientôt.)" (aucun changement nécessaire)
+
+5. pitch-deck.tsx — 4 références "3 langues" corrigées :
+   - COMPETITOR_CRITERIA : "3 langues (FR/Dioula/Baoulé)" → "2 langues écrites (FR + Nouchi) + audio bientôt"
+   - SlideProblem description : "qui parle Nouchi, Dioula et Baoulé" → "qui parle Nouchi (et bientôt Dioula et Baoulé en audio)"
+   - SlideSolution languages display : "3 langues" + badges [Français, Dioula, Baoulé] → "2 langues écrites + audio bientôt" + badges [Français, Nouchi] (normaux) + [Dioula · audio, Baoulé · audio] (italique, fond plus clair)
+   - SlideCompetitors footnote : "3 langues locales" → "2 langues écrites (FR + Nouchi) — Dioula/Baoulé en audio bientôt"
+   - SlideTraction stat : "3 langues (Français, Dioula, Baoulé)" → "2 langues écrites (FR + Nouchi) — Dioula/Baoulé en audio bientôt"
+
+6. layout.tsx — 3 metadatas mises à jour :
+   - description : "4 langues: français, Nouchi, Dioula, Baoulé" → "2 langues écrites (français, Nouchi) — Dioula et Baoulé en audio bientôt"
+   - openGraph.description : "En français, Nouchi, Dioula et Baoulé" → "En français et Nouchi (Dioula et Baoulé en audio bientôt)"
+   - twitter.description : "en Nouchi, Dioula et Baoulé" → "en français et Nouchi (Dioula et Baoulé en audio bientôt)"
+
+7. manifest.json — description mise à jour : "En français, Nouchi, Dioula et Baoulé" → "En français et Nouchi (Dioula et Baoulé en audio bientôt)"
+
+Vérifications finales :
+- bun run lint : 0 erreur
+- HTTP 200 en 226ms (compile 3ms)
+- agent-browser : chat suggestions clean (12 suggestions FR/Nouchi, PLUS de "I ni ce, ne bana" ou "Kpatou, m'ɔ ti" qui étaient cachés en localStorage)
+- agent-browser : pitch deck slide 3 (Solution) affiche correctement : Français + Nouchi en badges normaux, Dioula + Baoulé en italique avec mention "audio" (VLM confirmé)
+- agent-browser : pitch deck slide 8 (Traction) affiche "2 langues écrites (FR + Nouchi) — Dioula/Baoulé en audio bientôt" (VLM confirmé)
+- HTML head metadatas vérifiées : description/og:description/twitter:description toutes à jour
+- 0 erreur runtime, 0 erreur console
+
+Stage Summary:
+- Dioula et Baoulé SUPPRIMÉS du mode texte dans toute l'app : types TypeScript (UserRegister/ToneRegister/ChatResponse), détection de langue (detectUserRegister), prompts LLM (toneBlock), salutations localisées (getLocalizedGreeting), helper matchesLanguageMarkers
+- Dioula et Baoulé conservés UNIQUEMENT comme mention "audio bientôt" (tooltip chat, onboarding, pitch deck italique badges, metadatas) — signalant clairement que ces langues seront supportées via ASR/TTS (oral), pas via texte écrit
+- app Sankofa intacte : 5 tabs navigables, 0 erreur, chat fonctionnel en français + Nouchi uniquement (texte), pitch deck cohérent avec le positionnement "2 langues écrites + audio bientôt"
+
+---
+Task ID: 29
+Agent: main
+Task: Sankofa peut-il donner des indices sur les problèmes en fonction des conséquences ?
+
+Work Log:
+- Audit des capacités actuelles : triage (10 red flags + TPE + keywords), RAG (9 protocoles médicaux avec symptômes/causes/orientation), system prompt LLM (workflow 4 étapes : empathie → triage → info → orientation)
+- Identifié que le WORKFLOW ne demandait PAS explicitement au LLM de structurer ses réponses en "causes → conséquences → prévention"
+- Amélioration du system prompt LLM (src/lib/llm.ts) : ajout d'une étape 4 au WORKFLOW qui demande explicitement au LLM de donner des "indices structurés" quand l'utilisateur décrit un symptôme ou comportement à risque :
+  · **Causes possibles** : 2-3 hypothèses éducatives (PAS un diagnostic)
+  · **Conséquences si ignoré** : impact concret sur la santé
+  · **Facteurs de risque** : contextes qui aggravent
+  · **Signes d'alerte** : red flags secondaires pour consulter vite
+  · **Prévention** : conseils pratiques non médicaux
+  · Disclaimer obligatoire : "Ce sont des pistes, pas un diagnostic — seul un médecin peut confirmer"
+  · Exemple concret fourni dans le prompt (brûlure urinaire → IST/urinaire/irritation)
+
+Tests API réels (3 cas) :
+1. "ça brûle quand je pisse depuis 2 jours" (grande_soeur) → RÉPONSE STRUCTURÉE PARFAITE :
+   ⚠️ Causes possibles : infection urinaire, IST (chlamydiose/gonococcie), irritation
+   💔 Si tu ignores : aggravation, problèmes de fertilité
+   🎯 Facteurs aggravants : peu d'eau, rapports non protégés
+   🚨 Consulte vite si : fièvre, douleurs bas-ventre, urine trouble
+   🌿 Prévention : boire de l'eau, préservatifs
+   💡 Disclaimer + 📍 AIBEF Abidjan (gratuit pour les jeunes)
+
+2. "jai trop d acné sur le visage" (tonton_medecin) → RÉPONSE STRUCTURÉE :
+   ⚠️ Causes : hormones, stress, produits gras, génétique
+   💔 Si ignores : marques permanentes
+   🎯 Facteurs aggravants : dormir tard, sucre, produits non adaptés
+   🚨 Consulte vite si : boutons douloureux, cicatrices
+   🌿 Prévention : laver 2x/jour, savon doux, eau
+   💡 Disclaimer + 📍 CHU Cocody / AIBEF
+
+3. "je prends du tramadol tous les jours" (grand_frere) → RED FLAG DÉCLENCHÉ (addiction) :
+   Réponse pré-écrite sécurisée (registre sober) — PAS d'indices structurés car sujet grave nécessitant orientation immédiate. Comportement correct : les red flags court-circuitent le LLM pour la sécurité.
+
+Vérifications :
+- bun run lint : 0 erreur
+- HTTP 200 en 56ms
+- API /api/chat : 3 tests réussis, réponses structurées avec 5 sections + disclaimer + orientation
+- Red flags toujours prioritaires sur les indices (sécurité maintenue)
+
+Stage Summary:
+- Sankofa DONNE MAINTENANT des indices structurés sur les problèmes en fonction des conséquences
+- Format standardisé : Causes possibles → Conséquences si ignoré → Facteurs aggravants → Signes d'alerte → Prévention + Disclaimer + Orientation
+- 5 domaines couverts : SSR, addictologie (sauf red flags), dermatologie, santé mentale, nutrition
+- Sécurité maintenue : red flags (suicide, viol, overdose, addiction grave, etc.) court-circuitent toujours le LLM avec réponses pré-écrites + orientation immédiate
+- Disclaimer systématique : "Ce sont des pistes, pas un diagnostic — seul un médecin peut confirmer"
+
+---
+
+## Task 6-audio — Agent: Audio (ASR/TTS) Integration
+
+**Task**: Add the ability for users to **speak** to Sankofa (speech-to-text) and **hear** Sankofa's responses (text-to-speech). Critical because young Ivorians speak Dioula/Baoulé/Nouchi but don't write them.
+
+### Work Log
+
+**Backend (server-only, z-ai-web-dev-sdk):**
+
+1. **Created `src/app/api/chat/transcribe/route.ts`** (POST, `runtime = "nodejs"`)
+   - Accepts `multipart/form-data` with `audio` field (Blob from MediaRecorder).
+   - Wraps `req.formData()` in try/catch → returns 400 (not 500) when Content-Type is wrong.
+   - Validates: file presence, `instanceof Blob`, non-zero size, ≤10 MB.
+   - Converts Blob → base64, calls `zai.audio.asr.create({ file_base64 })`, returns `{ text }`.
+   - `maxDuration = 30` (ASR can take a few seconds).
+
+2. **Created `src/app/api/chat/speak/route.ts`** (POST, `runtime = "nodejs"`)
+   - Accepts `{ text, persona? }` JSON.
+   - Persona → voice map: grande_soeur→`tongtong` (warm), grand_frere→`xiaochen` (calm), tonton_medecin→`luodo` (deeper).
+   - Caps text at 500 chars (`MAX_TEXT_LENGTH`).
+   - Returns binary audio response (Content-Type, Content-Length, no-cache).
+   - **Deviation from spec (documented in route header)**: the spec asked for `audio/mpeg` but the upstream TTS API rejects `response_format: "mp3"` with code 1214 ("不支持当前response_format值"). Switched to `wav` (the format used by the official `skills/TTS/tts.ts` reference script). Browsers play `audio/wav` natively via `Audio()`/`<audio>`. Verified working.
+
+**Frontend (`src/components/aya/chat.tsx`):**
+
+3. **Added Mic button** next to the send button in the chat input form.
+   - Same `size="icon"` styling as the send button (terracotta bg, hover ocre-rouge).
+   - States: idle (`Mic` icon, terracotta) → recording (`Square` icon, ocre-rouge bg + `animate-pulse` ring) → transcribing (`Loader2` spinning).
+   - Uses `MediaRecorder` with mime-type fallback chain: `audio/webm;codecs=opus` → `audio/webm` → `audio/ogg;codecs=opus` → `audio/ogg` → default.
+   - On stop: builds `FormData` with the Blob, POSTs to `/api/chat/transcribe`, fills input field with the transcribed text (appended if input not empty). **Does NOT auto-send** — user reviews and clicks Envoyer (sécurité + contrôle).
+   - Permission denied: catches `NotAllowedError` → toast "Microphone non disponible" with hint about browser settings.
+   - `mounted` state gates the button (disabled on SSR, enabled after hydration → no hydration mismatch).
+   - Cleanup on unmount: stops recorder + releases all MediaStream tracks (no orphan "mic active" indicator).
+   - Full `aria-label` + `aria-pressed` + `title` for accessibility.
+
+4. **Added `SpeakButton` component** + integrated into `MessageBubble`.
+   - New component placed before `MessageBubble` in the file.
+   - On assistant bubbles only (not user, not companion, not welcome, not switch, non-empty content) — `canSpeak` flag mirrors `canSaveToCarnet` condition.
+   - Uses `new Audio()` created in `useEffect` (client-only) — no DOM node per bubble, no `window` access during render.
+   - States: idle (`Volume2` + "Écouter") → loading (`Loader2` spinner) → playing (`Square` + "Stop", click = stop).
+   - Fetches `/api/chat/speak`, creates object URL from blob, plays via `audio.play()`.
+   - Proper cleanup: `URL.revokeObjectURL` on unmount + when re-playing.
+   - `onended`/`onerror` handlers reset `isPlaying`.
+   - Same visual style as "Sauver dans mon carnet" button (text-[10px], ocre-rouge, hover terracotta).
+
+**Imports added**: `Mic`, `Square`, `Volume2` from `lucide-react` (already in deps).
+
+**Color palette respected**: terracotta (`bg-terracotta`), ocre-rouge (`bg-ocre-rouge`, `text-ocre-rouge`), creme-baobab, text-on-dark. No blue/indigo introduced.
+
+### Verification
+
+- **`bun run lint`**: 0 errors (clean output).
+- **`/api/chat/speak` curl test** (POST `{text, persona}`): HTTP 200, `audio/wav`, 346,896 bytes (RIFF/WAVE PCM 16-bit mono 24000 Hz), 2.9s.
+- **`/api/chat/transcribe` curl test** (POST `multipart/form-data` with WAV file): HTTP 200, `{text:"..."}` returned in 0.5s.
+- **`/api/chat/transcribe` error handling** (no body): HTTP 400 (was 500 before fix — wrapped `formData()` in try/catch).
+- **`/api/chat/transcribe` error handling** (empty audio field): HTTP 400 with proper French error message.
+- **Home page `/`**: HTTP 200, 91 KB, 0.1s — chat UI loads normally.
+- **dev.log**: API routes compile cleanly, no exceptions, no hot-reload errors. Initial mp3 error (1214) was caught and fixed by switching to wav.
+
+### Issues Encountered
+
+1. **mp3 rejected by upstream TTS API** — error code 1214 "不支持当前response_format值". Fixed by switching to `wav` (matches the official `skills/TTS/tts.ts` reference script). Documented in the route header. Browsers play WAV natively.
+2. **`req.formData()` throws on non-multipart requests** — Next.js throws a `TypeError` when Content-Type is missing. Wrapped in try/catch to return HTTP 400 instead of 500.
+
+### Files
+
+- CREATE: `src/app/api/chat/transcribe/route.ts` (~95 lines)
+- CREATE: `src/app/api/chat/speak/route.ts` (~117 lines)
+- MODIFY: `src/components/aya/chat.tsx` (+ ~250 lines: SpeakButton component, Mic button, recording logic, mounted state, cleanup effect)
+
+### Stage Summary
+
+- Sankofa now **listens** (mic button → MediaRecorder → /api/chat/transcribe → fills input) and **speaks** (Volume2 button on each assistant bubble → /api/chat/speak → plays WAV via Audio()).
+- Critical for young Ivorians who speak Dioula/Baoulé/Nouchi fluently but write them rarely — they can now ask their health question out loud and hear the answer.
+- Transcription does NOT auto-send (user reviews the text first → safety + control).
+- z-ai-web-dev-sdk stays strictly server-side (dynamic `await import()` in API routes only).
+- Hydration-safe: `mounted` state gates the mic button, `new Audio()` created in `useEffect` only.
+- Cleanup: MediaStream tracks + recorder stopped on unmount, object URLs revoked.
+- Accessibility: full `aria-label`/`aria-pressed`/`title` on every audio button.
+- Color palette respected (terracotta/ocre-rouge/creme-baobab — no blue/indigo).
+
+---
+Task ID: 1-frontend
+Agent: main (frontend)
+Task: Add Feedback UI + Transparency Panel + Persona Suggestion to Chat (V3)
+
+Work Log:
+- Lu worklog.md (1861 lignes) + chat.tsx complet (1428 lignes) + chat-pipeline.ts + emotion.ts + persona-suggest.ts + /api/chat/feedback/route.ts pour comprendre le contrat backend
+- Identifié les nouveaux champs ProcessChatOutput : emotion, emotionIntensity, needsEmotionalCheckIn, personaRecommendation {recommended, current, shouldSuggest, reason}, protocolsUsed
+- Vérifié que le backend /api/chat retourne déjà ces champs (test curl POST /api/chat sur "ça brûle quand je pisse" → emotion:"neutre", personaRecommendation.shouldSuggest:true vers tonton_medecin, protocolsUsed:[3 slugs])
+
+Modifications appliquées dans src/components/aya/chat.tsx :
+
+1. **Imports** (ligne 16) : ajout de `ThumbsUp, ThumbsDown, Info, X` depuis lucide-react.
+
+2. **ChatMessage interface** : ajout de 6 nouveaux champs optionnels :
+   - emotion?: "détresse" | "anxieux" | "triste" | "colère" | "honte" | "neutre"
+   - emotionIntensity?: number (0-1)
+   - needsEmotionalCheckIn?: boolean
+   - personaRecommendation?: { recommended, current, shouldSuggest, reason }
+   - protocolsUsed?: string[]
+   - register?: "nouchi" | "sober" | "soutenu" | "standard" | "familier" (ajouté pour TransparencyPanel)
+
+3. **ChatResponse interface** : miroir de ProcessChatOutput — ajout des 5 mêmes champs V3 (emotion, emotionIntensity, needsEmotionalCheckIn, personaRecommendation, protocolsUsed).
+
+4. **PERSONA_NAME map** : `Record<Persona, string>` ({grande_soeur:"Aya", grand_frere:"Yao", tonton_medecin:"Tonton Koffi"}) — lookup rapide pour TransparencyPanel et PersonaSuggestionBanner.
+
+5. **FeedbackButtons component** (~75 lignes) :
+   - Props : { msg: ChatMessage, anonymousId: string }
+   - POST vers /api/chat/feedback avec { anonymousId, messageTs: msg.ts, messageRole: 'assistant', messagePreview: msg.content.slice(0,100), thumb, triageLevel, persona, emotion }
+   - État local : vote ('up'|'down'|null) + submitting (bool)
+   - Un seul vote par message (désactive les deux boutons après clic)
+   - Highlight : bg-vert-baobab/15 + text-vert-baobab pour 👍 sélectionné, bg-terracotta/15 + text-terracotta pour 👎
+   - Toast succès : "Merci ! Ton avis m'aide à m'améliorer." | Toast erreur sur échec API
+   - Accessibilité : aria-label, aria-pressed, title sur chaque bouton
+
+6. **TransparencyPanel component** (~40 lignes) :
+   - Props : { msg: ChatMessage }
+   - Card : bg-creme-baobab/60 border border-ocre-rouge/15 rounded-lg p-3 text-xs
+   - Affiche 6 lignes : Persona (Aya/Yao/Tonton Koffi), Registre (msg.register), Niveau triage, Protocoles utilisés (slugs join ", " ou "Aucun"), Émotion détectée (label + intensity %), TPE (Oui/Non)
+   - Header "ℹ️ Pourquoi cette réponse ?" en gras
+
+7. **PersonaSuggestionBanner component** (~35 lignes) :
+   - Props : { recommendation: NonNullable<ChatMessage["personaRecommendation"]>, onSwitch, onDismiss }
+   - Style : bg-ambre-couchant/15 border border-ambre-couchant/30 rounded-lg p-2.5 text-xs flex items-center gap-2
+   - Contenu : [reason text] [Switch to {name}?] [X + "Non merci"]
+   - Bouton switch : appelle onSwitch(recommended) → handlePersonaChange dans Chat (change le persona + dismiss)
+   - Bouton dismiss : icône X + texte "Non merci" (caché sur mobile, visible sm+)
+
+8. **MessageBubble rewrite** (~140 lignes) :
+   - Nouveaux props : anonymousId?, onSwitchPersona?
+   - Nouveau flag `isAssistantReal` : !isUser && !isCompanion && !welcome && !switch (filtre les vraies réponses assistant)
+   - État local : showTransparency (bool), personaSuggestionDismissed (bool) — un Set de visibilité par bulle
+   - Layout (sous la bulle) :
+     1. PersonaSuggestionBanner (si shouldSuggest && !dismissed)
+     2. Row avec flex-wrap : time | Sauver | Écouter | FeedbackButtons | Info button ("Pourquoi ?")
+     3. TransparencyPanel (si showTransparency)
+   - Info button : bg-ocre-rouge/15 quand actif, hover:bg-ocre-rouge/10 sinon ; icône Info + label "Pourquoi ?" (caché mobile)
+   - aria-expanded sur Info button pour accessibilité
+
+9. **Response handling** (sendMessage, ligne ~1392) :
+   - Mapping des 6 nouveaux champs ChatResponse → ChatMessage : emotion, emotionIntensity, needsEmotionalCheckIn, personaRecommendation, protocolsUsed, register
+   - Conservation de la logique existante (persona, triage, tpe, protocolUsed, companion activation, red flag toast)
+
+10. **MessageBubble usage** (Chat render, ligne ~1595) :
+    - Passé `anonymousId={anonymousId}` et `onSwitchPersona={handlePersonaChange}` à chaque <MessageBubble>
+
+Vérifications finales :
+- bun run lint : 0 erreur (ESLint clean)
+- HTTP 200 sur / (dev server restarté pour régénérer le Prisma client avec la table Feedback)
+- Test API POST /api/chat sur "je suis anxieux pour mes examens" → emotion: "anxieux", intensity: 0.55, needsEmotionalCheckIn: true, personaRecommendation.shouldSuggest: false (Aya déjà la bonne sœur), protocolsUsed: [3 slugs], register: "standard" ✓
+- Test API POST /api/chat sur "posologie lamoxicilline IST" → personaRecommendation.shouldSuggest: true (recommande tonton_medecin), reason: "Question médicale technique — Tonton Koffi pourrait t'expliquer plus en détail." ✓
+- Test API POST /api/chat/feedback avec messageTs petit (1700000000, secondes Unix) → HTTP 200 {"ok":true} ✓
+
+Issue backend pré-existante (HORS scope frontend, à traiter par un autre agent) :
+- /api/chat/feedback retourne HTTP 500 avec erreur Prisma P2023 "Conversion failed: Value 1736000000000 does not fit in an INT column" quand on envoie messageTs: Date.now() (millisecondes, 13 chiffres)
+- Cause : le schema Prisma déclare `messageTs Int` (32-bit, max 2 147 483 647) au lieu de `BigInt`
+- Le frontend envoie correctement `messageTs: msg.ts` (Date.now() en ms) comme spécifié dans la task
+- Fix backend suggéré : changer `messageTs Int` → `messageTs BigInt` dans prisma/schema.prisma + `bun run db:push` (gérer la migration avec @default(0) ou accept-data-loss)
+- Impact UX : tant que le fix backend n'est pas appliqué, cliquer sur 👍/👎 affiche un toast erreur au lieu du toast succès. Les boutons feedback, le TransparencyPanel et la PersonaSuggestionBanner fonctionnent correctement indépendamment de ce bug.
+
+Stage Summary:
+- UI V3 complète dans src/components/aya/chat.tsx : 3 nouveaux composants (FeedbackButtons, TransparencyPanel, PersonaSuggestionBanner) + MessageBubble étendu (nouveaux props anonymousId + onSwitchPersona, nouveaux états showTransparency + personaSuggestionDismissed)
+- ChatMessage interface étendue avec 6 champs V3 (emotion, emotionIntensity, needsEmotionalCheckIn, personaRecommendation, protocolsUsed, register)
+- ChatResponse interface miroir de ProcessChatOutput
+- Response handling : mapping des 6 nouveaux champs backend → ChatMessage
+- Palette Sankofa respectée : vert-baobab (👍), terracotta (👎), ambre-couchant (suggestion persona), ocre-rouge (info/transparence), creme-baobab (panel). Zéro bleu/indigo.
+- Accessibilité : aria-label, aria-pressed, aria-expanded, title, sr-only sur tous les nouveaux boutons
+- Hydration-safe : tous les états interactifs en useState (initialisés à false/null) → pas de mismatch SSR
+- framer-motion préservé sur les bulles (initial/animate/transition inchangés)
+- Lint : 0 erreur ; HTTP 200 stable ; API /api/chat retourne tous les champs V3
+- Bug backend pré-existant (Prisma messageTs Int overflow) identifié et documenté pour le prochain agent backend — n'impacte pas le rendu UI, seulement le toast succès du feedback

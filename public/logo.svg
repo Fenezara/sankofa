@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+	 viewBox="0 0 120 120" preserveAspectRatio="xMidYMid meet">
+  <defs>
+    <linearGradient id="skf-inner" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6B4423"/>
+      <stop offset="30%" stop-color="#8B5A3C"/>
+      <stop offset="60%" stop-color="#A8451F"/>
+      <stop offset="85%" stop-color="#E89B3C"/>
+      <stop offset="100%" stop-color="#F4C77B"/>
+    </linearGradient>
+    <linearGradient id="skf-bird" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF8E1"/>
+      <stop offset="40%" stop-color="#F4C77B"/>
+      <stop offset="80%" stop-color="#E89B3C"/>
+      <stop offset="100%" stop-color="#D65430"/>
+    </linearGradient>
+    <radialGradient id="skf-glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#F4C77B" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#E89B3C" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#E89B3C" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Halo -->
+  <circle cx="60" cy="60" r="60" fill="url(#skf-glow)"/>
+
+  <!-- Bordure externe -->
+  <circle cx="60" cy="60" r="57" fill="none" stroke="#7A2E12" stroke-width="1.5"/>
+
+  <!-- Anneau Adinkra : 24 triangles rayonnants -->
+  <g stroke="#A8451F" stroke-width="1" fill="none" stroke-linejoin="round">
+    <path d="M 116.81 75.29 L 110.92 78.32 L 110.92 72.26 Z"/>
+    <path d="M 110.39 90.51 L 103.74 91.93 L 105.71 86.18 Z"/>
+    <path d="M 99.32 102.96 L 92.34 101.61 L 95.92 96.61 Z"/>
+    <path d="M 84.71 112.59 L 78.00 110.10 L 82.91 106.40 Z"/>
+    <path d="M 67.97 117.83 L 62.05 113.83 L 67.97 110.30 Z"/>
+    <path d="M 52.03 117.83 L 52.03 110.30 L 57.95 113.83 Z"/>
+    <path d="M 35.29 112.59 L 37.09 106.40 L 42.00 110.10 Z"/>
+    <path d="M 20.68 102.96 L 24.08 96.61 L 27.66 101.61 Z"/>
+    <path d="M 9.61 90.51 L 14.29 86.18 L 16.26 91.93 Z"/>
+    <path d="M 3.19 75.29 L 9.08 72.26 L 9.08 78.32 Z"/>
+    <path d="M 3.19 44.71 L 9.08 47.74 L 9.08 41.68 Z"/>
+    <path d="M 9.61 29.49 L 16.26 28.07 L 14.29 33.82 Z"/>
+    <path d="M 20.68 17.04 L 27.66 18.39 L 24.08 23.39 Z"/>
+    <path d="M 35.29 7.41 L 42.00 9.90 L 37.09 13.60 Z"/>
+    <path d="M 52.03 2.17 L 57.95 6.17 L 52.03 9.70 Z"/>
+    <path d="M 67.97 2.17 L 67.97 9.70 L 62.05 6.17 Z"/>
+    <path d="M 84.71 7.41 L 82.91 13.60 L 78.00 9.90 Z"/>
+    <path d="M 99.32 17.04 L 95.92 23.39 L 92.34 18.39 Z"/>
+    <path d="M 110.39 29.49 L 105.71 33.82 L 103.74 28.07 Z"/>
+    <path d="M 116.81 44.71 L 110.92 47.74 L 110.92 41.68 Z"/>
+    <path d="M 117.83 52.03 L 110.30 52.03 L 113.83 57.95 Z"/>
+    <path d="M 117.83 67.97 L 113.83 62.05 L 110.30 67.97 Z"/>
+    <path d="M 2.17 67.97 L 6.17 62.05 L 9.70 67.97 Z"/>
+    <path d="M 2.17 52.03 L 9.70 52.03 L 6.17 57.95 Z"/>
+  </g>
+
+  <!-- Liseré doré -->
+  <circle cx="60" cy="60" r="48.5" fill="none" stroke="#F4C77B" stroke-width="0.7" opacity="0.75"/>
+
+  <!-- Cercle interne -->
+  <circle cx="60" cy="60" r="46" fill="url(#skf-inner)"/>
+
+  <!-- Texture pointillée interne -->
+  <circle cx="60" cy="60" r="44" fill="none" stroke="#FFF8E1" stroke-width="0.4" stroke-dasharray="0.5 2" opacity="0.3"/>
+
+  <!-- === Oiseau Sankofa (centré sur 60,60) === -->
+  <g transform="translate(60, 60)">
+    <!-- Queue -->
+    <path d="M 14 16 C 22 18, 28 14, 30 8 C 27 12, 22 12, 16 12 C 18 8, 18 4, 16 2 Z" fill="url(#skf-bird)" stroke="#3D1A0E" stroke-width="1" stroke-linejoin="round"/>
+    <path d="M 18 14 L 26 10 M 19 11 L 27 7 M 18 8 L 24 4" stroke="#3D1A0E" stroke-width="0.5" fill="none" opacity="0.5"/>
+
+    <!-- Corps en cœur -->
+    <path d="M -16 4 C -18 -10, -10 -18, -2 -14 C 6 -18, 16 -10, 14 4 C 14 14, 6 22, -2 26 C -10 22, -16 14, -16 4 Z" fill="url(#skf-bird)" stroke="#3D1A0E" stroke-width="1.2" stroke-linejoin="round"/>
+    <!-- Aile -->
+    <path d="M -10 -2 C -6 -4, -2 -4, 2 -2 C 6 -4, 10 -2, 12 2 C 8 6, 4 10, 0 12 C -4 10, -8 6, -10 -2 Z" fill="#D65430" stroke="#3D1A0E" stroke-width="0.7" opacity="0.6"/>
+    <path d="M -6 0 L 4 6 M -2 -2 L 8 4 M 2 -2 L 10 2" stroke="#3D1A0E" stroke-width="0.4" fill="none" opacity="0.45"/>
+
+    <!-- Cou courbé vers l'arrière -->
+    <path d="M -12 -8 C -20 -14, -28 -10, -30 -4 C -31 -1, -29 2, -25 3 C -21 3, -17 1, -14 -2 C -13 -4, -13 -6, -12 -8 Z" fill="url(#skf-bird)" stroke="#3D1A0E" stroke-width="1" stroke-linejoin="round"/>
+    <!-- Tête -->
+    <circle cx="-26" cy="-4" r="5.5" fill="url(#skf-bird)" stroke="#3D1A0E" stroke-width="1"/>
+    <!-- Crête -->
+    <path d="M -28 -10 C -27 -12, -25 -12, -24 -10" stroke="#3D1A0E" stroke-width="0.9" fill="none" stroke-linecap="round"/>
+    <!-- Œil -->
+    <circle cx="-27.5" cy="-5" r="1.4" fill="#3D1A0E"/>
+    <circle cx="-27" cy="-5.5" r="0.5" fill="#FFF8E1"/>
+    <!-- Bec -->
+    <path d="M -31 -3 L -35.5 -2 L -31 0.5 Z" fill="#F4C77B" stroke="#3D1A0E" stroke-width="0.6" stroke-linejoin="round"/>
+
+    <!-- Œuf (symbole central) -->
+    <ellipse cx="-37.5" cy="-1.5" rx="3" ry="3.6" fill="#FFF8E1" stroke="#3D1A0E" stroke-width="0.7"/>
+    <ellipse cx="-38.5" cy="-3" rx="0.9" ry="1.3" fill="#FFFFFF" opacity="0.75"/>
+    <circle cx="-36.5" cy="-0.5" r="0.4" fill="#E89B3C" opacity="0.6"/>
+    <circle cx="-38" cy="0.5" r="0.3" fill="#D65430" opacity="0.5"/>
+
+    <!-- Pattes -->
+    <line x1="-4" y1="26" x2="-6" y2="34" stroke="#3D1A0E" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="4" y1="26" x2="6" y2="34" stroke="#3D1A0E" stroke-width="1.5" stroke-linecap="round"/>
+    <path d="M -8 34 L -6 34 L -4 34 M -6 34 L -6 36" stroke="#3D1A0E" stroke-width="1" fill="none" stroke-linecap="round"/>
+    <path d="M 4 34 L 6 34 L 8 34 M 6 34 L 6 36" stroke="#3D1A0E" stroke-width="1" fill="none" stroke-linecap="round"/>
+  </g>
+</svg>

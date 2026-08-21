@@ -1,0 +1,42 @@
+# Sankofa — robots.txt
+# Coach santé IA ivoirien. 100% anonyme.
+
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Twitterbot
+Allow: /
+
+User-agent: facebookexternalhit
+Allow: /
+
+User-agent: LinkedInBot
+Allow: /
+
+User-agent: WhatsApp
+Allow: /
+
+User-agent: TelegramBot
+Allow: /
+
+User-agent: *
+Allow: /
+Crawl-delay: 2
+
+# API routes — pas d'indexation (privacy + dynamic content)
+Disallow: /api/
+
+# Static assets OK
+Allow: /images/
+Allow: /icons/
+Allow: /logo.svg
+Allow: /manifest.json
+Allow: /robots.txt
+Allow: /sitemap.xml
+
+Sitemap: https://sankofa.ci/sitemap.xml

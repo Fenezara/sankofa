@@ -1,0 +1,1048 @@
+     1→"use client";
+     2→
+     3→/**
+     4→ * Sankofa — Chat (V2)
+     5→ *
+     6→ * - 3 personas (grande_soeur par défaut, grand_frere, tonton_medecin)
+     7→ * - Bulles WhatsApp-style avec palette Sankofa (terracotta assistant, rose-couchée user)
+     8→ * - Suggestions en forme de cauris
+     9→ * - Avatar Aya = symbole Adinkra Aya (SVG)
+    10→ * - Welcome message ts=0 (sentinel) pour éviter hydration mismatch
+    11→ * - Personas envoyés au backend ; registre adaptatif géré côté serveur
+    12→ */
+    13→
+    14→import * as React from "react";
+    15→import { motion, AnimatePresence } from "framer-motion";
+    16→import { Send, Loader2, ShieldCheck, Stethoscope, AlertTriangle, Lock } from "lucide-react";
+    17→import { toast } from "sonner";
+    18→import { playSendSound, playReceiveSound } from "@/lib/sounds";
+    19→import { v4 as uuidv4 } from "uuid";
+    20→
+    21→import { Button } from "@/components/ui/button";
+    22→import { Input } from "@/components/ui/input";
+    23→import { Badge } from "@/components/ui/badge";
+    24→import { cn } from "@/lib/utils";
+    25→import { CaurisChip } from "@/components/cultural/cauris-chip";
+    26→import { SankofaLogo } from "@/components/aya/sankofa-logo";
+    27→import { LoginButton } from "@/components/auth/login-button";
+    28→import { useSession } from "@/components/auth/auth-provider";
+    29→import type { Persona, RedFlagTopic } from "@/lib/guardrails";
+    30→import {
+    31→  COMPANION_CHECK_IN_INTERVAL_MS,
+    32→  COMPANION_MAX_CHECK_INS,
+    33→  COMPANION_RESUME_MESSAGE,
+    34→  COMPANION_AUTO_CANCEL_MESSAGE,
+    35→  INITIAL_COMPANION_STATE,
+    36→  loadCompanionState,
+    37→  saveCompanionState,
+    38→  getCheckInMessage,
+    39→  getQuickActionResponse,
+    40→  getTriggerLabel,
+    41→  type CompanionState,
+    42→  type CompanionQuickAction,
+    43→} from "@/lib/companion";
+    44→import {
+    45→  CompanionBanner,
+    46→  CompanionQuickActions,
+    47→} from "@/components/aya/companion-banner";
+    48→
+    49→/** Photo portrait par persona (répertoire /public/images/v3/). */
+    50→const PERSONA_PHOTO: Record<Persona, string> = {
+    51→  grande_soeur: "/images/v3/persona-aya.jpg",
+    52→  grand_frere: "/images/v3/persona-yao.jpg",
+    53→  tonton_medecin: "/images/v3/persona-tonton.jpg",
+    54→};
+    55→
+    56→/** Alt texte par persona. */
+    57→const PERSONA_ALT: Record<Persona, string> = {
+    58→  grande_soeur: "Portrait d'Aya, jeune femme ivoirienne, grande sœur bienveillante",
+    59→  grand_frere: "Portrait de Yao, jeune homme ivoirien, grand frère protecteur",
+    60→  tonton_medecin: "Portrait de Tonton Koffi, médecin ivoirien mature au stéthoscope",
+    61→};
+    62→
+    63→/** Anneau Adinkra décoratif autour de l'avatar (SVG, pas le visage). */
+    64→function AdinkraRing({ size }: { size: number }) {
+    65→  const stroke = Math.max(1.2, size * 0.06);
+    66→  const r = size / 2 - stroke;
+    67→  const cx = size / 2;
+    68→  const cy = size / 2;
+    69→  return (
+    70→    <svg
+    71→      aria-hidden="true"
+    72→      width={size}
+    73→      height={size}
+    74→      viewBox={`0 0 ${size} ${size}`}
+    75→      className="absolute inset-0 pointer-events-none"
+    76→    >
+    77→      <defs>
+    78→        <linearGradient id="aya-ring-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+    79→          <stop offset="0%" stopColor="#F4C77B" />
+    80→          <stop offset="50%" stopColor="#E89B3C" />
+    81→          <stop offset="100%" stopColor="#9B3F1F" />
+    82→        </linearGradient>
+    83→      </defs>
+    84→      <circle
+    85→        cx={cx}
+    86→        cy={cy}
+    87→        r={r}
+    88→        fill="none"
+    89→        stroke="url(#aya-ring-grad)"
+    90→        strokeWidth={stroke}
+    91→        strokeDasharray={`${r * 0.18} ${r * 0.12}`}
+    92→        strokeLinecap="round"
+    93→        transform={`rotate(-90 ${cx} ${cy})`}
+    94→      />
+    95→    </svg>
+    96→  );
+    97→}
+    98→
+    99→/** Avatar persona photoréaliste (header 40px, bulles 32px). */
+   100→function PersonaAvatar({
+   101→  persona,
+   102→  size,
+   103→  className,
+   104→  priority = false,
+   105→}: {
+   106→  persona: Persona;
+   107→  size: number;
+   108→  className?: string;
+   109→  priority?: boolean;
+   110→}) {
+   111→  return (
+   112→    <div
+   113→      className={cn("relative shrink-0 rounded-full overflow-hidden bg-terracotta", className)}
+   114→      style={{ width: size, height: size }}
+   115→    >
+   116→      {/* Avatar persona photoréaliste */}
+   117→      <img
+   118→        src={PERSONA_PHOTO[persona]}
+   119→        alt={PERSONA_ALT[persona]}
+   120→        width={size}
+   121→        height={size}
+   122→        loading={priority ? "eager" : "lazy"}
+   123→        decoding="async"
+   124→        className="object-cover w-full h-full"
+   125→      />
+   126→      <AdinkraRing size={size} />
+   127→    </div>
+   128→  );
+   129→}
+   130→
+   131→export interface ChatMessage {
+   132→  id: string;
+   133→  role: "user" | "assistant";
+   134→  content: string;
+   135→  ts: number;
+   136→  triageLevel?: "info" | "orientation" | "urgence";
+   137→  tpeActivated?: boolean;
+   138→  protocolUsed?: string | null;
+   139→  persona?: Persona;
+   140→  /** Message du mode compagnon (check-in / quick action) — style différencié. */
+   141→  companion?: boolean;
+   142→}
+   143→
+   144→interface ChatResponse {
+   145→  reply: string;
+   146→  triageLevel: "info" | "orientation" | "urgence";
+   147→  tpeActivated?: boolean;
+   148→  protocolUsed?: string | null;
+   149→  redFlagTopic?: string;
+   150→  persona: Persona;
+   151→  personaName?: string;
+   152→  personaLabel?: string;
+   153→  register?: "nouchi" | "sober" | "soutenu" | "standard" | "familier";
+   154→  userRegister?: "nouchi" | "soutenu" | "standard" | "familier";
+   155→}
+   156→
+   157→const STORAGE_KEY = "aya:anonymousId";
+   158→const HISTORY_KEY = "aya:chatHistory";
+   159→const PERSONA_KEY = "aya:persona";
+   160→// Version du cache — incrémenter à chaque modification du welcome ou de la structure des messages.
+   161→// Force l'invalidation de l'historique localStorage pour éviter les hydration mismatches.
+   162→const HISTORY_VERSION = "v7-fr-nouchi";
+   163→
+   164→interface PersonaMeta {
+   165→  id: Persona;
+   166→  label: string;
+   167→  sub: string;
+   168→  name: string;
+   169→  initials: string;
+   170→}
+   171→
+   172→const PERSONAS: PersonaMeta[] = [
+   173→  {
+   174→    id: "grande_soeur",
+   175→    label: "Grande sœur",
+   176→    sub: "Aya · aînée bienveillante",
+   177→    name: "Aya",
+   178→    initials: "A",
+   179→  },
+   180→  {
+   181→    id: "grand_frere",
+   182→    label: "Grand frère",
+   183→    sub: "Yao · aîné protecteur",
+   184→    name: "Yao",
+   185→    initials: "Y",
+   186→  },
+   187→  {
+   188→    id: "tonton_medecin",
+   189→    label: "Tonton médecin",
+   190→    sub: "Tonton Koffi · clinicien",
+   191→    name: "Tonton Koffi",
+   192→    initials: "TK",
+   193→  },
+   194→];
+   195→
+   196→/** Message d'accueil personnalisé par persona. */
+   197→function buildWelcomeMessage(persona: Persona): ChatMessage {
+   198→  let content: string;
+   199→  if (persona === "grande_soeur") {
+   200→    content =
+   201→      "Salut poto 👋, ici c'est Sankofa.\n\n" +
+   202→      "100% anonyme, zéro jugement, je suis là pour toi 24/7. Tu peux me parler santé sexuelle, " +
+   203→      "addiction, peau, moral, nutrition... tout ce qui te trotte dans la tête.\n\n" +
+   204→      "Y'a pas drap, on est ensemble. 🌿\n\n" +
+   205→      "Vas-y, clique sur une suggestion en forme de cauris, ou tape ta question.";
+   206→  } else if (persona === "grand_frere") {
+   207→    content =
+   208→      "Yo mon frère 👋, ici c'est Yao.\n\n" +
+   209→      "100% anonyme, zéro jugement, je suis là pour toi 24/7. On parle santé, filles, contraception, " +
+   210→      "tramadol, acné, examens, bouffe... tout ce qui te tracasse.\n\n" +
+   211→      "Y'a pas drap, on est ensemble. 🌿\n\n" +
+   212→      "Vas-y, clique sur une suggestion ou tape ta question direct.";
+   213→  } else {
+   214→    // tonton_medecin
+   215→    content =
+   216→      "Bonjour 👋, ici c'est Tonton Koffi.\n\n" +
+   217→      "100% anonyme, je suis là pour t'orienter 24/7. Pose-moi tes questions sur la contraception, " +
+   218→      "les IST, le TPE 72h, le tramadol, la peau, le stress, la nutrition... Je t'explique le pourquoi, sans jargon.\n\n" +
+   219→      "On prend soin de toi ensemble. 🌿\n\n" +
+   220→      "Vas-y, clique sur une suggestion ou tape ta question.";
+   221→  }
+   222→  return {
+   223→    id: `welcome-${persona}`,
+   224→    role: "assistant",
+   225→    content,
+   226→    ts: 0,
+   227→    persona,
+   228→  };
+   229→}
+   230→
+   231→// Sentinel welcome (initial, replaced client-side once persona is loaded)
+   232→const WELCOME_MESSAGE: ChatMessage = buildWelcomeMessage("grande_soeur");
+   233→
+   234→const SUGGESTIONS = [
+   235→  // SSR
+   236→  { label: "Rapport non protégé hier soir", emoji: "⚠️" },
+   237→  { label: "Pilule du lendemain", emoji: "💊" },
+   238→  { label: "Brûlure en urinant, c'est grave ?", emoji: "🔥" },
+   239→  { label: "Mon préservatif a craqué", emoji: "💥" },
+   240→  // Addictologie
+   241→  { label: "Je consomme trop de tramadol", emoji: "💊" },
+   242→  { label: "Comment arrêter le tabac ?", emoji: "🚬" },
+   243→  // Dermatologie
+   244→  { label: "Crème éclaircissante, danger ?", emoji: "🧴" },
+   245→  { label: "J'ai de l'acné, que faire ?", emoji: "😌" },
+   246→  // Santé mentale
+   247→  { label: "Je me sens triste tout le temps", emoji: "🤍" },
+   248→  { label: "Stress pour mes examens", emoji: "📚" },
+   249→  // Nutrition
+   250→  { label: "Comment bien manger pas cher ?", emoji: "🍌" },
+   251→  { label: "Les compléments alimentaires, safe ?", emoji: "🧪" },
+   252→  // Multilingue — audio bientôt (Dioula & Baoulé à l'oral)
+   253→  // Les jeunes ivoiriens parlent ces langues mais les écrivent rarement.
+   254→  // L'audio (ASR/TTS) permettra de les parler plutôt que les écrire.
+   255→];
+   256→
+   257→function formatTime(ts: number): string {
+   258→  if (!ts) return "";
+   259→  try {
+   260→    return new Date(ts).toLocaleTimeString("fr-FR", {
+   261→      hour: "2-digit",
+   262→      minute: "2-digit",
+   263→    });
+   264→  } catch {
+   265→    return "";
+   266→  }
+   267→}
+   268→
+   269→function getAnonymousId(): string {
+   270→  if (typeof window === "undefined") return "server";
+   271→  try {
+   272→    let id = window.localStorage.getItem(STORAGE_KEY);
+   273→    if (!id) {
+   274→      id = uuidv4();
+   275→      window.localStorage.setItem(STORAGE_KEY, id);
+   276→    }
+   277→    return id;
+   278→  } catch {
+   279→    return uuidv4();
+   280→  }
+   281→}
+   282→
+   283→function loadHistory(persona: Persona): ChatMessage[] {
+   284→  if (typeof window === "undefined") return [buildWelcomeMessage(persona)];
+   285→  try {
+   286→    // Check version — if mismatch, clear old history and start fresh
+   287→    const storedVersion = window.localStorage.getItem("aya:historyVersion");
+   288→    if (storedVersion !== HISTORY_VERSION) {
+   289→      window.localStorage.removeItem(HISTORY_KEY);
+   290→      window.localStorage.setItem("aya:historyVersion", HISTORY_VERSION);
+   291→      return [buildWelcomeMessage(persona)];
+   292→    }
+   293→
+   294→    const raw = window.localStorage.getItem(HISTORY_KEY);
+   295→    if (!raw) return [buildWelcomeMessage(persona)];
+   296→    const parsed = JSON.parse(raw) as ChatMessage[];
+   297→    if (!Array.isArray(parsed) || parsed.length === 0) return [buildWelcomeMessage(persona)];
+   298→
+   299→    // Invalider les anciens welcome messages si leur contenu ne correspond plus
+   300→    // au welcome actuel (évite hydration mismatch quand le welcome change entre versions)
+   301→    const currentWelcome = buildWelcomeMessage(persona);
+   302→    const updated = parsed.map((msg) => {
+   303→      if (
+   304→        typeof msg.id === "string" &&
+   305→        msg.id.startsWith("welcome-") &&
+   306→        msg.content !== currentWelcome.content
+   307→      ) {
+   308→        return { ...msg, content: currentWelcome.content, persona };
+   309→      }
+   310→      return msg;
+   311→    });
+   312→    return updated;
+   313→  } catch {
+   314→    return [buildWelcomeMessage(persona)];
+   315→  }
+   316→}
+   317→
+   318→function saveHistory(messages: ChatMessage[]) {
+   319→  if (typeof window === "undefined") return;
+   320→  try {
+   321→    const trimmed = messages.slice(-50);
+   322→    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
+   323→  } catch {
+   324→    // localStorage plein ou bloqué
+   325→  }
+   326→}
+   327→
+   328→function loadPersona(): Persona {
+   329→  if (typeof window === "undefined") return "grande_soeur";
+   330→  try {
+   331→    const stored = window.localStorage.getItem(PERSONA_KEY) as Persona | null;
+   332→    if (stored && ["grande_soeur", "grand_frere", "tonton_medecin"].includes(stored)) {
+   333→      return stored;
+   334→    }
+   335→  } catch {
+   336→    // ignore
+   337→  }
+   338→  return "grande_soeur";
+   339→}
+   340→
+   341→function TriageBadge({ level }: { level: "info" | "orientation" | "urgence" }) {
+   342→  if (level === "info") return null;
+   343→  if (level === "orientation") {
+   344→    return (
+   345→      <Badge
+   346→        variant="outline"
+   347→        className="bg-ambre-couchant/15 border-ambre-couchant/40 text-ocre-rouge gap-1"
+   348→      >
+   349→        <Stethoscope className="size-3" />
+   350→        Orientation conseillée
+   351→      </Badge>
+   352→    );
+   353→  }
+   354→  return (
+   355→    <Badge className="bg-ocre-rouge text-text-on-dark border-0 gap-1">
+   356→      <AlertTriangle className="size-3" />
+   357→      Urgence — voir structure
+   358→    </Badge>
+   359→  );
+   360→}
+   361→
+   362→function MessageBubble({
+   363→  msg,
+   364→  onSaveToCarnet,
+   365→}: {
+   366→  msg: ChatMessage;
+   367→  onSaveToCarnet?: (msg: ChatMessage) => void;
+   368→}) {
+   369→  const isUser = msg.role === "user";
+   370→  const isCompanion = !!msg.companion && !isUser;
+   371→  const canSaveToCarnet =
+   372→    !isUser && onSaveToCarnet && !msg.id.startsWith("welcome-") && !msg.id.startsWith("switch-");
+   373→  return (
+   374→    <motion.div
+   375→      initial={{ opacity: 0, y: 8 }}
+   376→      animate={{ opacity: 1, y: 0 }}
+   377→      transition={{ duration: 0.2 }}
+   378→      className={cn("flex w-full gap-2", isUser ? "justify-end" : "justify-start")}
+   379→      aria-label={isCompanion ? "Message de compagnon de Sankofa" : undefined}
+   380→    >
+   381→      {!isUser && (
+   382→        <PersonaAvatar
+   383→          persona={msg.persona ?? "grande_soeur"}
+   384→          size={32}
+   385→          className="mt-0.5 border border-or-poudre-clair/30"
+   386→        />
+   387→      )}
+   388→      <div className={cn("flex flex-col max-w-[82%] sm:max-w-[75%] gap-1", isUser ? "items-end" : "items-start")}>
+   389→        {msg.triageLevel && msg.triageLevel !== "info" && !isUser && (
+   390→          <TriageBadge level={msg.triageLevel} />
+   391→        )}
+   392→        {msg.tpeActivated && !isUser && (
+   393→          <Badge className="bg-terracotta/20 border border-terracotta/40 text-ocre-rouge gap-1">
+   394→            ⏱️ TPE 72h activé
+   395→          </Badge>
+   396→        )}
+   397→        <div
+   398→          className={cn(
+   399→            "px-3.5 py-2.5 text-sm shadow-sm whitespace-pre-wrap break-words leading-relaxed",
+   400→            isUser
+   401→              ? "aya-bubble-user"
+   402→              : isCompanion
+   403→                ? "aya-bubble-companion border-l-4 border-l-terracotta"
+   404→                : "aya-bubble-assistant",
+   405→          )}
+   406→        >
+   407→          {msg.content}
+   408→        </div>
+   409→        <div className={cn("flex items-center gap-2", isUser ? "justify-end" : "justify-start")}>
+   410→          {isCompanion ? (
+   411→            <span className="text-[10px] text-ocre-rouge font-medium px-1">
+   412→              🌿 Compagnon
+   413→            </span>
+   414→          ) : msg.ts > 0 ? (
+   415→            <span
+   416→              suppressHydrationWarning
+   417→              className="text-[10px] text-text-on-light-muted px-1"
+   418→            >
+   419→              {formatTime(msg.ts)}
+   420→            </span>
+   421→          ) : null}
+   422→          {canSaveToCarnet && (
+   423→            <button
+   424→              type="button"
+   425→              onClick={() => onSaveToCarnet?.(msg)}
+   426→              className="inline-flex items-center gap-1 text-[10px] text-ocre-rouge hover:text-terracotta font-medium transition-colors px-1.5 py-0.5 rounded hover:bg-ocre-rouge/10"
+   427→              aria-label="Sauvegarder cette réponse dans le carnet chiffré"
+   428→              title="Sauver dans mon carnet chiffré"
+   429→            >
+   430→              <Lock className="size-3" />
+   431→              Sauver dans mon carnet
+   432→            </button>
+   433→          )}
+   434→        </div>
+   435→      </div>
+   436→    </motion.div>
+   437→  );
+   438→}
+   439→
+   440→function TypingIndicator({ persona }: { persona: Persona }) {
+   441→  return (
+   442→    <motion.div
+   443→      initial={{ opacity: 0, y: 8 }}
+   444→      animate={{ opacity: 1, y: 0 }}
+   445→      exit={{ opacity: 0 }}
+   446→      className="flex gap-2 justify-start"
+   447→    >
+   448→      <PersonaAvatar
+   449→        persona={persona}
+   450→        size={32}
+   451→        className="mt-0.5 border border-or-poudre-clair/30"
+   452→      />
+   453→      <div className="aya-bubble-assistant px-4 py-3 flex items-center gap-1.5">
+   454→        <span className="aya-typing-dot size-2 rounded-full bg-text-on-dark/80 inline-block" />
+   455→        <span className="aya-typing-dot size-2 rounded-full bg-text-on-dark/80 inline-block" />
+   456→        <span className="aya-typing-dot size-2 rounded-full bg-text-on-dark/80 inline-block" />
+   457→        <span className="sr-only">Sankofa écrit...</span>
+   458→      </div>
+   459→    </motion.div>
+   460→  );
+   461→}
+   462→
+   463→interface ChatProps {
+   464→  className?: string;
+   465→  onSaveToCarnet?: (msg: ChatMessage) => void;
+   466→}
+   467→
+   468→export function Chat({ className, onSaveToCarnet }: ChatProps) {
+   469→  const [messages, setMessages] = React.useState<ChatMessage[]>([WELCOME_MESSAGE]);
+   470→  const [input, setInput] = React.useState("");
+   471→  const [isTyping, setIsTyping] = React.useState(false);
+   472→  const [anonymousId, setAnonymousId] = React.useState<string>("");
+   473→  const [persona, setPersona] = React.useState<Persona>("grande_soeur");
+   474→  const [companionMode, setCompanionMode] = React.useState<CompanionState>(
+   475→    INITIAL_COMPANION_STATE,
+   476→  );
+   477→  // Authentification optionnelle (Task 12). Session reste "loading" au premier render
+   478→  // (server) puis résout vers "authenticated" | "unauthenticated" côté client.
+   479→  // Pas d'impact sur l'anonymat — si non authentifié, on envoie simplement userId=null.
+   480→  const { data: session, status: sessionStatus } = useSession();
+   481→  const userId = React.useMemo(
+   482→    () => (sessionStatus === "authenticated" ? (session?.user as { id?: string } | undefined)?.id ?? null : null),
+   483→    [session, sessionStatus],
+   484→  );
+   485→
+   486→  const scrollRef = React.useRef<HTMLDivElement>(null);
+   487→  const inputRef = React.useRef<HTMLInputElement>(null);
+   488→  const bottomRef = React.useRef<HTMLDivElement>(null);
+   489→
+   490→  // Ref miroir de l'état compagnon pour les callbacks d'interval (évite les stale closures)
+   491→  const companionRef = React.useRef<CompanionState>(companionMode);
+   492→  React.useEffect(() => {
+   493→    companionRef.current = companionMode;
+   494→  }, [companionMode]);
+   495→
+   496→  /** Ajoute un message compagnon (check-in / quick action) — pré-écrit, sans LLM. */
+   497→  const sendCompanionMessage = React.useCallback(
+   498→    (content: string, personaOverride?: Persona) => {
+   499→      if (!content) return;
+   500→      const msg: ChatMessage = {
+   501→        id: `companion-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+   502→        role: "assistant",
+   503→        content,
+   504→        ts: Date.now(),
+   505→        persona: personaOverride,
+   506→        companion: true,
+   507→      };
+   508→      setMessages((prev) => [...prev, msg]);
+   509→    },
+   510→    [],
+   511→  );
+   512→
+   513→  /** Active le mode compagnon (ne fait rien si déjà actif). */
+   514→  const activateCompanion = React.useCallback(
+   515→    (
+   516→      trigger: "tpe" | "red_flag" | "manual",
+   517→      redFlagTopic?: RedFlagTopic,
+   518→      personaOverride?: Persona,
+   519→    ) => {
+   520→      let activated = false;
+   521→      setCompanionMode((prev) => {
+   522→        if (prev.active) return prev;
+   523→        activated = true;
+   524→        const now = Date.now();
+   525→        const newState: CompanionState = {
+   526→          active: true,
+   527→          startedAt: now,
+   528→          trigger,
+   529→          redFlagTopic,
+   530→          stage: "departing",
+   531→          lastCheckIn: now,
+   532→          checkInCount: 1, // le message d'activation compte comme check-in 1
+   533→        };
+   534→        return newState;
+   535→      });
+   536→      if (activated) {
+   537→        const msg = getCheckInMessage(trigger, redFlagTopic, 0);
+   538→        sendCompanionMessage(msg, personaOverride);
+   539→      }
+   540→    },
+   541→    [sendCompanionMessage],
+   542→  );
+   543→
+   544→  /** Réinitialise le compteur de check-ins (utilisateur·rice engagé·e). */
+   545→  const resetCheckInTimer = React.useCallback(() => {
+   546→    setCompanionMode((prev) => {
+   547→      if (!prev.active) return prev;
+   548→      return {
+   549→        ...prev,
+   550→        checkInCount: 0,
+   551→        lastCheckIn: Date.now(),
+   552→      };
+   553→    });
+   554→  }, []);
+   555→
+   556→  /** Gère les 4 quick actions du mode compagnon. */
+   557→  const handleQuickAction = React.useCallback(
+   558→    (actionId: CompanionQuickAction["id"]) => {
+   559→      const current = companionRef.current;
+   560→      if (!current.active) return;
+   561→      const response = getQuickActionResponse(actionId);
+   562→      sendCompanionMessage(response);
+   563→
+   564→      switch (actionId) {
+   565→        case "en_route":
+   566→          setCompanionMode((prev) => ({
+   567→            ...prev,
+   568→            stage: "in_transit",
+   569→            checkInCount: 0,
+   570→            lastCheckIn: Date.now(),
+   571→          }));
+   572→          break;
+   573→        case "parler":
+   574→          resetCheckInTimer();
+   575→          break;
+   576→        case "arrived": {
+   577→          // Offre de sauvegarder la consultation dans le carnet chiffré
+   578→          if (onSaveToCarnet) {
+   579→            const triggerLabel = getTriggerLabel(current);
+   580→            const dateStr = new Date().toLocaleString("fr-FR", {
+   581→              dateStyle: "short",
+   582→              timeStyle: "short",
+   583→            });
+   584→            const syntheticMsg: ChatMessage = {
+   585→              id: `companion-save-${Date.now()}`,
+   586→              role: "assistant",
+   587→              content: `Consultation terminée — ${triggerLabel}. Arrivé·e à la structure le ${dateStr}.`,
+   588→              ts: Date.now(),
+   589→              persona,
+   590→              companion: true,
+   591→            };
+   592→            onSaveToCarnet(syntheticMsg);
+   593→          }
+   594→          // Transition vers « completed » → bannière change, puis fade après 5s
+   595→          setCompanionMode((prev) => ({ ...prev, stage: "completed" }));
+   596→          window.setTimeout(() => {
+   597→            setCompanionMode((prev) => ({ ...prev, active: false }));
+   598→          }, 5000);
+   599→          break;
+   600→        }
+   601→        case "stop":
+   602→          setCompanionMode((prev) => ({
+   603→            ...prev,
+   604→            stage: "cancelled",
+   605→            active: false,
+   606→          }));
+   607→          break;
+   608→      }
+   609→    },
+   610→    [onSaveToCarnet, persona, resetCheckInTimer, sendCompanionMessage],
+   611→  );
+   612→
+   613→  /** Fermeture de la bannière (X) — demande confirmation. */
+   614→  const handleDismissCompanion = React.useCallback(() => {
+   615→    if (typeof window !== "undefined") {
+   616→      const ok = window.confirm(
+   617→        "Arrêter le mode compagnon ? Sankofa ne t'enverra plus de check-ins, mais restera disponible si tu as besoin.",
+   618→      );
+   619→      if (!ok) return;
+   620→    }
+   621→    const stopMsg = getQuickActionResponse("stop");
+   622→    sendCompanionMessage(stopMsg);
+   623→    setCompanionMode((prev) => ({
+   624→      ...prev,
+   625→      stage: "cancelled",
+   626→      active: false,
+   627→    }));
+   628→  }, [sendCompanionMessage]);
+   629→
+   630→  // Init: load history + anonymous ID + persona + companion state (client-only)
+   631→  React.useEffect(() => {
+   632→    const loadedPersona = loadPersona();
+   633→    setPersona(loadedPersona);
+   634→    setAnonymousId(getAnonymousId());
+   635→    const loadedMessages = loadHistory(loadedPersona);
+   636→    setMessages(loadedMessages);
+   637→
+   638→    // Charge l'état compagnon persisté (survit aux rechargements)
+   639→    const loadedCompanion = loadCompanionState();
+   640→    if (loadedCompanion) {
+   641→      setCompanionMode(loadedCompanion);
+   642→      if (loadedCompanion.stage === "completed") {
+   643→        // La bannière « terminé » est encore visible, on programme le fade
+   644→        window.setTimeout(() => {
+   645→          setCompanionMode((prev) => ({ ...prev, active: false }));
+   646→        }, 5000);
+   647→      } else if (loadedCompanion.stage === "cancelled") {
+   648→        // Déjà annulé — on désactive proprement
+   649→        setCompanionMode((prev) => ({ ...prev, active: false }));
+   650→      } else {
+   651→        // Mode compagnon toujours actif → message de retour
+   652→        // (reset du timer pour éviter le spam de check-ins au retour)
+   653→        setCompanionMode((prev) => ({
+   654→          ...prev,
+   655→          lastCheckIn: Date.now(),
+   656→        }));
+   657→        const lastMsg = loadedMessages[loadedMessages.length - 1];
+   658→        if (!lastMsg || lastMsg.content !== COMPANION_RESUME_MESSAGE) {
+   659→          sendCompanionMessage(COMPANION_RESUME_MESSAGE, loadedPersona);
+   660→        }
+   661→      }
+   662→    }
+   663→  }, [sendCompanionMessage]);
+   664→
+   665→  React.useEffect(() => {
+   666→    if (bottomRef.current) {
+   667→      bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
+   668→    }
+   669→  }, [messages, isTyping]);
+   670→
+   671→  React.useEffect(() => {
+   672→    if (anonymousId) saveHistory(messages);
+   673→  }, [messages, anonymousId]);
+   674→
+   675→  // Persiste l'état compagnon dans localStorage à chaque changement
+   676→  React.useEffect(() => {
+   677→    saveCompanionState(companionMode);
+   678→  }, [companionMode]);
+   679→
+   680→  // Check-in interval — envoie le prochain check-in toutes les 45s (démo)
+   681→  // ou auto-annule après 5 check-ins sans réponse.
+   682→  React.useEffect(() => {
+   683→    if (!companionMode.active) return;
+   684→    if (companionMode.stage === "completed" || companionMode.stage === "cancelled") return;
+   685→
+   686→    const interval = window.setInterval(() => {
+   687→      const current = companionRef.current;
+   688→      if (!current.active || current.stage === "completed" || current.stage === "cancelled") return;
+   689→
+   690→      if (current.checkInCount >= COMPANION_MAX_CHECK_INS) {
+   691→        // Auto-annulation : 5 check-ins sans réponse
+   692→        sendCompanionMessage(COMPANION_AUTO_CANCEL_MESSAGE);
+   693→        setCompanionMode((prev) => ({
+   694→          ...prev,
+   695→          stage: "cancelled",
+   696→          active: false,
+   697→        }));
+   698→        return;
+   699→      }
+   700→
+   701→      const msg = getCheckInMessage(
+   702→        current.trigger,
+   703→        current.redFlagTopic,
+   704→        current.checkInCount,
+   705→      );
+   706→      sendCompanionMessage(msg);
+   707→      setCompanionMode((prev) => ({
+   708→        ...prev,
+   709→        checkInCount: prev.checkInCount + 1,
+   710→        lastCheckIn: Date.now(),
+   711→      }));
+   712→    }, COMPANION_CHECK_IN_INTERVAL_MS);
+   713→
+   714→    return () => window.clearInterval(interval);
+   715→  }, [companionMode.active, companionMode.stage, sendCompanionMessage]);
+   716→
+   717→  const handlePersonaChange = (p: Persona) => {
+   718→    if (p === persona) return;
+   719→    setPersona(p);
+   720→    if (typeof window !== "undefined") {
+   721→      try {
+   722→        window.localStorage.setItem(PERSONA_KEY, p);
+   723→      } catch {
+   724→        // ignore
+   725→      }
+   726→    }
+   727→
+   728→    // Si on n'a QUE le message d'accueil → on remplace simplement par le nouveau welcome
+   729→    setMessages((prev) => {
+   730→      const onlyWelcome =
+   731→        prev.length === 1 &&
+   732→        typeof prev[0].id === "string" &&
+   733→        prev[0].id.startsWith("welcome-");
+   734→      if (onlyWelcome) {
+   735→        return [buildWelcomeMessage(p)];
+   736→      }
+   737→      // Sinon : on ajoute un message système annonçant le changement de persona
+   738→      const newMeta = PERSONAS.find((x) => x.id === p);
+   739→      const switchMsg: ChatMessage = {
+   740→        id: `switch-${Date.now()}`,
+   741→        role: "assistant",
+   742→        content:
+   743→          `(Changement de persona — tu parles maintenant à ${newMeta?.name ?? "Aya"}.)`,
+   744→        ts: Date.now(),
+   745→        persona: p,
+   746→      };
+   747→      return [...prev, switchMsg];
+   748→    });
+   749→  };
+   750→
+   751→  const sendMessage = React.useCallback(
+   752→    async (text: string) => {
+   753→      const trimmed = text.trim();
+   754→      if (!trimmed || isTyping || !anonymousId) return;
+   755→
+   756→      const userMsg: ChatMessage = {
+   757→        id: `u-${Date.now()}`,
+   758→        role: "user",
+   759→        content: trimmed,
+   760→        ts: Date.now(),
+   761→      };
+   762→      const historyForApi = messages
+   763→        .filter((m) => !m.id.startsWith("welcome-") && !m.id.startsWith("switch-"))
+   764→        .slice(-10)
+   765→        .map((m) => ({ role: m.role, content: m.content }));
+   766→
+   767→      setMessages((prev) => [...prev, userMsg]);
+   768→      setInput("");
+   769→      setIsTyping(true);
+   770→      playSendSound();
+   771→
+   772→      try {
+   773→        const res = await fetch("/api/chat", {
+   774→          method: "POST",
+   775→          headers: { "Content-Type": "application/json" },
+   776→          body: JSON.stringify({
+   777→            message: trimmed,
+   778→            history: historyForApi,
+   779→            anonymousId,
+   780→            persona,
+   781→            userId, // optionnel — null si utilisateur anonyme
+   782→          }),
+   783→        });
+   784→        if (!res.ok) {
+   785→          const err = await res.json().catch(() => ({}));
+   786→          throw new Error(err.error || `Erreur ${res.status}`);
+   787→        }
+   788→        const data = (await res.json()) as ChatResponse;
+   789→        const assistantMsg: ChatMessage = {
+   790→          id: `a-${Date.now()}`,
+   791→          role: "assistant",
+   792→          content: data.reply,
+   793→          ts: Date.now(),
+   794→          triageLevel: data.triageLevel,
+   795→          tpeActivated: data.tpeActivated,
+   796→          protocolUsed: data.protocolUsed,
+   797→          persona: data.persona,
+   798→        };
+   799→        setMessages((prev) => [...prev, assistantMsg]);
+   800→        playReceiveSound();
+   801→
+   802→        // === Activation du mode compagnon ===
+   803→        // Déclenché par TPE OU red flag — Aya reste avec l'utilisateur·rice
+   804→        // pendant son trajet vers la structure.
+   805→        if (data.tpeActivated) {
+   806→          activateCompanion("tpe", undefined, data.persona);
+   807→        } else if (data.redFlagTopic) {
+   808→          activateCompanion("red_flag", data.redFlagTopic as RedFlagTopic, data.persona);
+   809→        }
+   810→
+   811→        if (data.redFlagTopic) {
+   812→          toast.warning("Sujet sensible détecté", {
+   813→            description:
+   814→              "On t'a orienté·e vers une structure adaptée. Tu n'es pas seul·e.",
+   815→          });
+   816→        }
+   817→        if (data.tpeActivated) {
+   818→          toast.info("⏱️ Fenêtre TPE 72h détectée", {
+   819→            description: "Sankofa reste avec toi — mode compagnon actif.",
+   820→          });
+   821→        }
+   822→      } catch (err) {
+   823→        const msg = err instanceof Error ? err.message : "Erreur inconnue";
+   824→        toast.error("Problème de connexion", {
+   825→          description: msg + ". Réessaie dans un instant.",
+   826→        });
+   827→      } finally {
+   828→        setIsTyping(false);
+   829→        inputRef.current?.focus();
+   830→      }
+   831→    },
+   832→    [anonymousId, isTyping, messages, persona, activateCompanion, userId],
+   833→  );
+   834→
+   835→  const onSubmit = (e: React.FormEvent) => {
+   836→    e.preventDefault();
+   837→    sendMessage(input);
+   838→  };
+   839→
+   840→  const onSuggestion = (s: string) => {
+   841→    sendMessage(s);
+   842→  };
+   843→
+   844→  const showSuggestions = messages.length <= 1;
+   845→
+   846→  return (
+   847→    <section
+   848→      id="chat"
+   849→      aria-label="Chat avec Sankofa"
+   850→      className={cn(
+   851→        "w-full h-full flex flex-col overflow-hidden bg-creme-baobab",
+   852→        className,
+   853→      )}
+   854→    >
+   855→      {/* Photo banner — Abidjan skyline at sunset, with warm gradient overlay */}
+   856→      <div className="relative h-[100px] sm:h-[120px] w-full shrink-0 overflow-hidden bg-noir-encre">
+   857→        <img
+   858→          src="/images/v3/abidjan-sunset.jpg"
+   859→          alt="Skyline d'Abidjan au coucher du soleil — pont et immeubles dorés"
+   860→          className="absolute inset-0 w-full h-full object-cover"
+   861→          loading="eager"
+   862→          decoding="async"
+   863→        />
+   864→        {/* Voile chaud terre-brûlée → transparent (lisibilité du texte par-dessus) */}
+   865→        <div
+   866→          className="absolute inset-0"
+   867→          style={{
+   868→            background:
+   869→              "linear-gradient(90deg, rgba(92, 42, 26, 0.85) 0%, rgba(122, 46, 18, 0.55) 45%, rgba(155, 63, 31, 0.25) 80%, rgba(26, 15, 10, 0.10) 100%)",
+   870→          }}
+   871→        />
+   872→        {/* Reflet doré du bas pour fondu avec le header terracotta */}
+   873→        <div
+   874→          className="absolute inset-x-0 bottom-0 h-8"
+   875→          style={{
+   876→            background:
+   877→              "linear-gradient(180deg, transparent 0%, rgba(199, 91, 60, 0.35) 100%)",
+   878→          }}
+   879→          aria-hidden="true"
+   880→        />
+   881→        <div className="relative z-10 h-full flex flex-col justify-center px-4 sm:px-5">
+   882→          <p
+   883→            className="text-creme-baobab text-lg sm:text-xl font-bold leading-tight"
+   884→            style={{ fontFamily: "var(--font-bricolage)" }}
+   885→          >
+   886→            Sankofa · Ton aîné·e santé
+   887→          </p>
+   888→          <p className="text-creme-baobab/80 text-[11px] sm:text-xs mt-0.5">
+   889→            100% anonyme · 24/7 · Façonnée à Abidjan 🇨🇮
+   890→          </p>
+   891→        </div>
+   892→      </div>
+   893→
+   894→      {/* Persona selector — single line, no wrap */}
+   895→      <div className="shrink-0 px-3 py-1.5 bg-sable-dore/40 border-b border-ocre-rouge/20">
+   896→        <div className="flex items-center gap-1.5 overflow-x-auto aya-scroll whitespace-nowrap">
+   897→          <span className="text-xs font-medium text-ocre-rouge shrink-0">Parle à :</span>
+   898→          {PERSONAS.map((p) => (
+   899→            <button
+   900→              key={p.id}
+   901→              type="button"
+   902→              onClick={() => handlePersonaChange(p.id)}
+   903→              aria-pressed={persona === p.id}
+   904→              title={p.sub}
+   905→              className={cn(
+   906→                "shrink-0 text-xs px-2.5 py-1 rounded-full border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-terracotta",
+   907→                persona === p.id
+   908→                  ? "bg-terracotta text-creme-baobab border-terracotta shadow"
+   909→                  : "bg-creme-baobab text-ocre-rouge border-ocre-rouge/30 hover:border-terracotta/60",
+   910→              )}
+   911→            >
+   912→              <span className="font-semibold">{p.name}</span>
+   913→            </button>
+   914→          ))}
+   915→        </div>
+   916→      </div>
+   917→
+   918→      {/* Header (style WhatsApp) */}
+   919→      <header className="flex items-center gap-3 px-4 py-3 bg-terracotta text-text-on-dark">
+   920→        <PersonaAvatar
+   921→          persona={persona}
+   922→          size={40}
+   923→          priority
+   924→          className="border-2 border-or-poudre-clair/30"
+   925→        />
+   926→        <div className="flex-1 min-w-0">
+   927→          <div className="flex items-center gap-2 flex-wrap">
+   928→            <h2 className="font-bold truncate" style={{ fontFamily: "var(--font-bricolage)" }}>
+   929→              {PERSONAS.find((p) => p.id === persona)?.name ?? "Aya"}
+   930→            </h2>
+   931→            {userId ? (
+   932→              <Badge className="bg-or-poudre-clair/25 text-text-accent-on-dark border border-or-poudre-clair/40 gap-1 text-[10px]">
+   933→                <ShieldCheck className="size-3" />
+   934→                Connecté·e
+   935→              </Badge>
+   936→            ) : (
+   937→              <Badge className="bg-or-poudre-clair/15 text-text-accent-on-dark border-0 gap-1 text-[10px]">
+   938→                <ShieldCheck className="size-3" />
+   939→                Anonyme
+   940→              </Badge>
+   941→            )}
+   942→            <Badge
+   943→              className="bg-or-poudre-clair/20 text-text-accent-on-dark border-0 text-[10px] hidden md:inline-flex"
+   944→              title="Sankofa parle aussi Dioula et Baoulé en audio (bientôt) — à l'oral, pas à l'écrit"
+   945→            >
+   946→              FR · Nouchi
+   947→            </Badge>
+   948→          </div>
+   949→          <p className="text-xs text-text-on-dark-soft">
+   950→            {isTyping ? "en train d'écrire..." : `${PERSONAS.find((p) => p.id === persona)?.label ?? "Grande sœur"} · en ligne 24/7`}
+   951→          </p>
+   952→        </div>
+   953→        {/* Login button (optional auth — Task 12). Hydration-safe via LoginButton's
+   954→            internal "loading" placeholder state. */}
+   955→        <div className="shrink-0">
+   956→          <LoginButton variant="header" />
+   957→        </div>
+   958→        <SankofaLogo size={28} className="opacity-80 hidden sm:block" aria-hidden="true" />
+   959→      </header>
+   960→
+   961→      {/* Mode compagnon — bannière + actions rapides */}
+   962→      {companionMode.active && (
+   963→        <div className="px-3 sm:px-4 py-2.5 bg-sable-dore/40 border-b border-ocre-rouge/20 space-y-2">
+   964→          <CompanionBanner
+   965→            state={companionMode}
+   966→            onDismiss={handleDismissCompanion}
+   967→          />
+   968→          {companionMode.stage !== "completed" &&
+   969→            companionMode.stage !== "cancelled" && (
+   970→              <CompanionQuickActions
+   971→                onAction={handleQuickAction}
+   972→                disabled={isTyping}
+   973→              />
+   974→            )}
+   975→        </div>
+   976→      )}
+   977→
+   978→      {/* Messages */}
+   979→      <div
+   980→        ref={scrollRef}
+   981→        className="aya-chat-bg aya-scroll flex-1 min-h-0 overflow-y-auto px-3 sm:px-4 py-4 flex flex-col gap-3"
+   982→      >
+   983→        <AnimatePresence initial={false}>
+   984→          {messages.map((m) => (
+   985→            <MessageBubble key={m.id} msg={m} onSaveToCarnet={onSaveToCarnet} />
+   986→          ))}
+   987→        </AnimatePresence>
+   988→        {isTyping && <TypingIndicator persona={persona} />}
+   989→        <div ref={bottomRef} aria-hidden="true" />
+   990→      </div>
+   991→
+   992→      {/* Suggestions */}
+   993→      {showSuggestions && (
+   994→        <div className="shrink-0 px-3 sm:px-4 py-2 border-t border-ocre-rouge/20 bg-creme-baobab/60 max-h-32 overflow-y-auto aya-scroll">
+   995→          <p className="text-xs text-ocre-rouge mb-2.5 font-medium">
+   996→            Suggestions pour démarrer 👇
+   997→          </p>
+   998→          <div className="flex flex-wrap gap-2">
+   999→            {SUGGESTIONS.map((s) => (
+  1000→              <CaurisChip
+  1001→                key={s.label}
+  1002→                emoji={s.emoji}
+  1003→                onClick={() => onSuggestion(s.label)}
+  1004→                disabled={isTyping}
+  1005→              >
+  1006→                {s.label}
+  1007→              </CaurisChip>
+  1008→            ))}
+  1009→          </div>
+  1010→        </div>
+  1011→      )}
+  1012→
+  1013→      {/* Input bar — sticky bottom, always visible */}
+  1014→      <form
+  1015→        onSubmit={onSubmit}
+  1016→        className="shrink-0 flex items-center gap-2 px-3 sm:px-4 py-2.5 border-t border-ocre-rouge/20 bg-creme-baobab"
+  1017→      >
+  1018→        <Input
+  1019→          ref={inputRef}
+  1020→          value={input}
+  1021→          onChange={(e) => setInput(e.target.value)}
+  1022→          placeholder="Écris ta question ici..."
+  1023→          disabled={isTyping}
+  1024→          maxLength={4000}
+  1025→          aria-label="Message à envoyer à Sankofa"
+  1026→          autoComplete="off"
+  1027→          className="aya-input-glow flex-1 bg-creme-baobab border-ocre-rouge/30 focus-visible:ring-terracotta"
+  1028→        />
+  1029→        <Button
+  1030→          type="submit"
+  1031→          size="icon"
+  1032→          disabled={isTyping || !input.trim()}
+  1033→          aria-label="Envoyer le message"
+  1034→          className="aya-btn-press shrink-0 bg-terracotta hover:bg-ocre-rouge text-text-on-dark"
+  1035→        >
+  1036→          {isTyping ? (
+  1037→            <Loader2 className="size-4 animate-spin" />
+  1038→          ) : (
+  1039→            <Send className="size-4" />
+  1040→          )}
+  1041→        </Button>
+  1042→      </form>
+  1043→    </section>
+  1044→  );
+  1045→}
+  1046→
+  1047→export default Chat;
+  1048→

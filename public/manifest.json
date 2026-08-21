@@ -1,0 +1,82 @@
+{
+  "name": "Sankofa — Ton aîné·e santé",
+  "short_name": "Sankofa",
+  "version": "4.1.0",
+  "description": "Coach santé IA validé par des médecins ivoiriens. 100% anonyme, 24/7. SSR, addictologie, dermatologie, santé mentale, nutrition, puberté, vaccination, orientation pro. En français et Nouchi (Dioula et Baoulé en audio bientôt).",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "fullscreen", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "background_color": "#FFF9F0",
+  "theme_color": "#D65430",
+  "categories": ["health", "medical", "lifestyle", "education"],
+  "lang": "fr",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Parler à Sankofa",
+      "short_name": "Parler",
+      "description": "Chat IA santé, anonyme 24/7",
+      "url": "/?tab=parler",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "SOS 72h (TPE)",
+      "short_name": "SOS 72h",
+      "description": "Traitement Post-Exposition — urgence rapport à risque",
+      "url": "/?tab=tpe",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Mon carnet de santé",
+      "short_name": "Carnet",
+      "description": "Carnet chiffré AES-256 + calendrier menstruel",
+      "url": "/?tab=carnet",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Urgences",
+      "short_name": "Urgences",
+      "description": "SAMU 185, Écoute psy 143, Police 110",
+      "url": "/?tab=aide",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "related_applications": [],
+  "iarc_rating_id": "e84b07b2-6dc0-4d4a-8b3b-9b0d6e8b1a3c",
+  "categories_v2": ["HEALTH_AND_FITNESS"]
+}

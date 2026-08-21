@@ -1,0 +1,393 @@
+// Doc Confida — Prisma schema
+// MVP anonymisé : aucun nom, email, ou PII stockée.
+// anonymousId = UUID généré côté client (localStorage).
+// Auth optionnelle (Task 12) : téléphone hashé (SHA-256) + OTP. Anonymat par défaut.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Utilisateur authentifié (optionnel). Phone jamais stocké en clair —
+/// uniquement son hash SHA-256 (phoneHash) + une version masquée pour l'affichage.
+/// Permet : récupération de carnet chiffré sur un autre téléphone,
+/// suivi des abonnements premium, téléconsultation (médecin doit savoir à qui il parle).
+model User {
+  id                String   @id @default(cuid())
+  phoneHash         String   @unique // SHA-256 du numéro E.164 (ex: "+2250701020304")
+  phoneMasked       String // ex: "+225 07 XX XX XX 04" — pour l'affichage UI
+  name              String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  accounts          Account[]
+  sessions          Session[]
+  // Lien optionnel vers les conversations anonymes (null si l'utilisateur reste anonyme)
+  conversations     Conversation[]
+  // Abonnement premium (free | plan_action | teleconsultation | family)
+  subscriptionTier  String?
+  subscriptionUntil DateTime?
+  // Carnet chiffré cloud (V3) — 1 carnet par User
+  carnetSync        CarnetSync?
+  // Cycle menstruel chiffré cloud (Task 3-cycle) — 1 cycle par User
+  cycleSync         CycleSync?
+  // Rappels de santé programmés (V3)
+  reminders         Reminder[]
+  // Téléconsultations (Task innovation)
+  teleconsultations Teleconsultation[]
+  // Témoignages anonymes publiés (pair-aidant)
+  testimonies       Testimony[]
+  // Événements analytics (opt-in, anonymes)
+  analyticsEvents   AnalyticsEvent[]
+}
+
+/// Téléconsultation — réservation visio avec médecin ivoirien partenaire.
+/// Bridge vers AIBEF / médecins partenaires. Payment lié via PaymentTransaction.
+model Teleconsultation {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  anonymousId     String   // pour lier à la conversation chat
+  tier            String   // 'teleconsultation' | 'family'
+  amount          Int      // FCFA (3000 ou family pricing)
+  scheduledAt     DateTime
+  durationMin     Int      @default(30)
+  status          String   @default("pending") // pending | confirmed | completed | cancelled | no_show
+  meetingUrl      String?  // Jitsi/Zoom link
+  meetingId       String?  // meeting ID
+  doctorName      String?  // médecin assigné
+  doctorSpecialty String?  // spécialité
+  symptoms        String?  // symptômes décrits (chiffré côté client idéalement)
+  paymentTxId     String?  // lien vers PaymentTransaction.id
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  reminderSentAt  DateTime?
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledAt])
+}
+
+/// Témoignage anonyme (pair-aidant). Moderation obligatoire avant publication.
+model Testimony {
+  id            String    @id @default(cuid())
+  anonymousId   String    // auteur (jamais identifié)
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  domain        String    // 'SSR' | 'Addictologie' | 'Dermatologie' | 'Santé mentale' | 'Nutrition'
+  title         String    // max 100 chars
+  content       String    // max 1000 chars
+  ageRange      String?   // '15-17' | '18-19' | '20-24'
+  status        String    @default("pending") // pending | approved | rejected
+  hearts        Int       @default(0)
+  reportedCount Int      @default(0)
+  createdAt     DateTime  @default(now())
+  moderatedAt   DateTime?
+  heartedBy     TestimonyHeart[]
+
+  @@index([status])
+  @@index([domain])
+  @@index([createdAt])
+}
+
+/// Like sur un témoignage (empêche les doubles-likes).
+model TestimonyHeart {
+  id           String   @id @default(cuid())
+  testimonyId  String
+  testimony    Testimony @relation(fields: [testimonyId], references: [id], onDelete: Cascade)
+  anonymousId  String
+  createdAt    DateTime @default(now())
+
+  @@unique([testimonyId, anonymousId])
+  @@index([testimonyId])
+}
+
+/// Événement analytics anonyme (opt-in). Pour amélioration produit.
+/// Aucune PII — anonymousId seulement. Agégats pour dashboard.
+model AnalyticsEvent {
+  id           String   @id @default(cuid())
+  anonymousId  String
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  event        String   // 'tab_change' | 'suggestion_click' | 'quiz_completed' | 'feedback_given' | 'audio_used' | 'sentinel_check_in' | 'testimony_shared' | 'cycle_logged'
+  properties   String   // JSON stringifié (event-specific)
+  createdAt    DateTime @default(now())
+
+  @@index([anonymousId])
+  @@index([event])
+  @@index([createdAt])
+}
+
+/// Alerte santé publique (épidémies, rappels vaccins, campagnes).
+/// Affichée dans l'app pour informer les jeunes.
+model HealthAlert {
+  id           String   @id @default(cuid())
+  title        String
+  message      String
+  severity     String   // 'info' | 'warning' | 'critical'
+  domain       String?  // 'SSR' | 'vaccination' | 'epidemic' | 'nutrition' | null
+  region       String?  // null = national, ou nom région CI
+  startsAt     DateTime @default(now())
+  endsAt       DateTime?
+  active       Boolean  @default(true)
+  source       String?  // 'OMS' | 'MinSante CI' | 'AIBEF'
+  createdAt    DateTime @default(now())
+
+  @@index([active])
+  @@index([severity])
+  @@index([domain])
+}
+
+/// Compte OAuth/credential lié à un User (modèle requis par NextAuth.js v4 adapter).
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+/// Session NextAuth.js (DB strategy). Avec JWT strategy (notre cas), cette table
+/// n'est pas utilisée — mais on la garde pour compatibilité future.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Token de vérification NextAuth (email magic link, etc.). Inutilisé pour
+/// l'instant (on utilise OtpCode à la place), mais requis par l'adapter.
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+/// Code OTP (6 chiffres) pour vérification téléphone. Hashé avec bcrypt.
+/// - expiresAt : 10 minutes après création
+/// - attempts : max 5 tentatives avant blocage
+/// - consumed : true après usage réussi
+/// - Rate limit côté API : max 3 OTP/hour/phoneHash
+///
+/// phoneHash n'est PAS unique — un téléphone peut avoir plusieurs OTP au fil du temps
+/// (l'ancien est marqué consumed mais reste en DB pour audit + rate-limit counting).
+model OtpCode {
+  id        String   @id @default(cuid())
+  phoneHash String // liens vers User.phoneHash (logique, pas FK — pas unique car un téléphone peut avoir plusieurs OTP historiques)
+  code      String // hash bcrypt du code 6 chiffres
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  consumed  Boolean  @default(false)
+
+  @@index([phoneHash])
+  @@index([createdAt])
+}
+
+/// Une conversation = un fil de chat anonyme.
+/// Identifié par un anonymousId (UUID v4 stocké côté client).
+/// userId est optionnel : null si l'utilisateur reste anonyme (comportement par défaut).
+model Conversation {
+  id          String   @id @default(cuid())
+  anonymousId String   @unique
+  userId      String? // optionnel — null si anonyme
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  messages    Message[]
+
+  @@index([anonymousId])
+  @@index([userId])
+}
+
+/// Un message dans une conversation (utilisateur ou assistant).
+/// triageLevel est null pour les messages utilisateur, et 'info' | 'orientation' | 'urgence' pour l'assistant.
+model Message {
+  id            String   @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role          String // 'user' | 'assistant'
+  content       String
+  triageLevel   String? // 'info' | 'orientation' | 'urgence'
+  protocolUsed  String? // slug du protocole RAG injecté
+  tpeActivated  Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([conversationId])
+}
+
+/// Transaction de paiement Mobile Money (CinetPay en production, simulation en dev).
+/// phone est stocké partiellement masqué (derniers 4 chiffres).
+/// `provider` indique l'origine ('cinetpay' | 'simulation') et `providerTxId`
+/// l'identifiant côté provider (utile pour le webhook de confirmation).
+model PaymentTransaction {
+  id           String   @id @default(cuid())
+  anonymousId  String
+  tier         String // 'plan_action' | 'teleconsultation'
+  amount       Int // en FCFA
+  phoneMasked  String // ex: ********4523
+  status       String // 'pending' | 'success' | 'failed'
+  provider     String? // 'cinetpay' | 'simulation' (null = legacy dev mode)
+  providerTxId String? // transaction_id côté CinetPay (format AYA-{ts}-{rand})
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([anonymousId])
+  @@index([status])
+  @@index([providerTxId])
+}
+
+/// Abonnement Push (Web Push API, VAPID).
+/// Un utilisateur anonyme peut avoir plusieurs abonnements (plusieurs devices).
+/// Utilisé pour notifier l'utilisateur·rice quand un plan d'action est prêt,
+/// une téléconsultation est confirmée, ou un rappel de suivi.
+model PushSubscription {
+  id           String   @id @default(cuid())
+  anonymousId  String
+  endpoint     String // URL du push service (FCM/Mozilla/Apple)
+  p256dh       String // clé publique ECDH (P-256)
+  auth         String // secret d'authentification
+  createdAt    DateTime @default(now())
+
+  @@index([anonymousId])
+  @@index([endpoint])
+}
+
+/// Feedback utilisateur sur une réponse de l'assistant (V3 — boucle d'apprentissage).
+/// thumb = 'up' (utile) | 'down' (pas utile). Optionnel : commentaire libre.
+/// anonymousId permet d'agréger les feedbacks sans réidentifier l'utilisateur.
+/// Aucune PII stockée — privacy by design.
+model Feedback {
+  id           String   @id @default(cuid())
+  anonymousId  String
+  messageRole  String   // 'user' | 'assistant' (le message concerné)
+  messageTs    BigInt   // timestamp du message (clé côté client) — BigInt car ms > 2^31
+  messagePreview String // 100 premiers caractères (pour debug)
+  thumb        String   // 'up' | 'down'
+  comment      String?
+  triageLevel  String?  // 'info' | 'orientation' | 'urgence' (contexte)
+  persona      String?  // 'grande_soeur' | 'grand_frere' | 'tonton_medecin'
+  emotion      String?  // émotion détectée (V3 — analyse)
+  createdAt    DateTime @default(now())
+
+  @@index([anonymousId])
+  @@index([thumb])
+  @@index([createdAt])
+}
+
+/// Carnet de santé chiffré — sync cloud (V3).
+/// L'utilisateur authentifié peut synchroniser son carnet chiffré (AES-256)
+/// pour le retrouver sur un autre téléphone. Le contenu est CHIFFRÉ côté client
+/// (Web Crypto) — la DB ne stocke que le blob chiffré + l'IV.
+/// Aucune donnée médicale en clair n'est stockée côté serveur (privacy by design).
+model CarnetSync {
+  id           String   @id @default(cuid())
+  userId       String   @unique // 1 carnet par User authentifié
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Blob chiffré AES-256-GCM (contient toutes les entries sérialisées JSON)
+  encryptedBlob String  // base64
+  // IV (Initialization Vector) — 12 bytes pour AES-GCM, stocké en base64
+  iv           String
+  // Version du schéma de chiffrement (pour migrations futures)
+  version      Int      @default(1)
+  // Nombre d'entries dans le blob (pour affichage UI sans déchiffrer)
+  entryCount   Int      @default(0)
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Rappel de santé programmé (V3).
+/// Permet à Sankofa de notifier l'utilisateur·rice :
+///   - Test VIH J+7 après TPE
+///   - Rappel pilule quotidienne
+///   - Rappel dépistage IST annuel
+///   - Suivi post-consultation
+/// Lié à un User (push notifications nécessitent auth) ou anonymousId (localStorage-only).
+model Reminder {
+  id           String   @id @default(cuid())
+  userId       String?  // null si anonyme (localStorage-only)
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  anonymousId  String   // toujours présent (même si userId lié)
+  type         String   // 'tpe_test' | 'pilule' | 'depistage_ist' | 'suivi_consult' | 'custom'
+  title        String
+  message      String   // corps de la notification
+  scheduledFor DateTime // quand déclencher
+  timezone     String   @default("Africa/Abidjan")
+  status       String   @default("pending") // 'pending' | 'sent' | 'snoozed' | 'cancelled'
+  snoozeCount  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+  @@index([anonymousId])
+  @@index([status])
+  @@index([scheduledFor])
+}
+
+/// Cycle menstruel chiffré — sync cloud (Task 3-cycle).
+/// Calendrier menstruel innovant : prédit les prochaines règles, fenêtre fertile,
+/// ovulation, et détecte les retards (alerte test de grossesse).
+///
+/// PRIVACY CRITIQUE : comme pour CarnetSync, le serveur ne JAMAIS voir le contenu
+/// en clair. Tout est chiffré côté client (AES-256-GCM via Web Crypto) :
+///   - dates de règles
+///   - symptômes (crampes, migraine, fatigue, etc.)
+///   - flux (léger/moyen/abondant)
+///   - notes personnelles
+///
+/// La DB ne stocke que le blob chiffré + l'IV. cycleCount permet d'afficher le
+/// nombre de cycles enregistrés sans déchiffrer (metadata publique).
+model CycleSync {
+  id            String   @id @default(cuid())
+  userId        String   @unique // 1 cycle par User authentifié
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Blob chiffré AES-256-GCM (contient CycleEntry[] sérialisé JSON)
+  encryptedBlob String   // base64
+  // IV (Initialization Vector) — 12 bytes pour AES-GCM, stocké en base64
+  iv            String
+  // Version du schéma de chiffrement (pour migrations futures)
+  version       Int      @default(1)
+  // Nombre de cycles enregistrés (pour affichage UI sans déchiffrer)
+  cycleCount    Int      @default(0)
+  updatedAt     DateTime @updatedAt
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Journal d'audit pour la traçabilité et conformité
+model AuditLog {
+  id          String   @id @default(cuid())
+  anonymousId String?
+  userId      String?
+  action      String
+  details     String?  // JSON stringifié
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([anonymousId])
+  @@index([action])
+  @@index([createdAt])
+}
+
