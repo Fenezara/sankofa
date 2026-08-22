@@ -209,8 +209,16 @@ function synthesizeContextualResponse(
   systemPrompt: string,
   messages: LLMMessage[],
 ): string {
-  const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content || "";
-  const normalized = lastUserMsg
+  const userMessages = messages.filter((m) => m.role === "user").map((m) => m.content);
+  const lastUserMsg = userMessages[userMessages.length - 1] || "";
+  const allUserText = userMessages.join(" ");
+
+  const normalizedLast = lastUserMsg
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const normalizedAll = allUserText
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "");
@@ -221,12 +229,80 @@ function synthesizeContextualResponse(
   const isTonton = systemPrompt.includes("Tu es TONTON KOFFI");
 
   const name = isYao ? "Yao" : isTonton ? "Tonton Koffi" : "Aya";
-  const brotherSister = isYao ? "mon frère / ma sœur" : isTonton ? "mon enfant" : "ma petite sœur / mon petit frère";
+  const personaIntro = isTonton
+    ? "En tant que médecin (Tonton Koffi)"
+    : isYao
+      ? "C'est ton grand frère Yao"
+      : "C'est ta grande sœur Aya";
+
+  // --- SUIVI CONVERSATIONNEL : Réponse courte à une question précédente (ex: "c'est depuis hier", "oui", "2 jours") ---
+  const isDurationFollowUp = /^(c[' ]est |depuis |ca fait |il y a |hier|avant[- ]hier|ce matin|2 jours|3 jours|1 semaine|quelques jours)/i.test(normalizedLast.trim());
+  const isAffirmationFollowUp = /^(oui|ouais|exactement|tout a fait|non|pas encore|un peu|beaucoup)/i.test(normalizedLast.trim());
+
+  // Contexte de FIEVRE / PALUDISME
+  if (normalizedAll.includes("fievre") || normalizedAll.includes("chaud") || normalizedAll.includes("frisson") || normalizedAll.includes("palu") || normalizedAll.includes("courbatur")) {
+    if (isDurationFollowUp || userMessages.length > 1) {
+      const cleanDuration = lastUserMsg.trim().replace(/^c[' ]est\s+/i, "");
+      return (
+        `D'accord, je note bien que c'est ${cleanDuration}. ${personaIntro}.\n\n` +
+        `En Côte d'Ivoire, une fièvre qui s'installe depuis plus de 24h évoque en premier lieu le **paludisme (accès palustre)** ou une infection virale.\n\n` +
+        `🩺 **Ce qu'il faut faire immédiatement** :\n` +
+        `1. **Fais un test TDR (Test de Diagnostic Rapide du paludisme)** dans le centre de santé ou la pharmacie la plus proche (c'est très rapide et accessible).\n` +
+        `2. **Hydrate-toi abondamment** : la fièvre déshydrate vite l'organisme. Bois de l'eau en quantité régulière.\n` +
+        `3. **Pour calmer la température** : prends du paracétamol selon la posologie de ton poids, mais **évite les anti-inflammatoires (comme l'ibuprofène ou l'aspirine)** avant de savoir si c'est le palu ou la dengue.\n\n` +
+        `🚨 **Signes d'alerte** : si tu as des vomissements répétés, des frissons violents, des maux de tête intenses ou si la fièvre dépasse 39°C, rends-toi directement aux urgences du centre de santé ou appelle le **185 (SAMU)**.\n\n` +
+        `Tu as des maux de tête, des nausées ou des courbatures avec la fièvre ?`
+      );
+    }
+
+    return (
+      `Aïe, je t'entends. Faire de la fièvre, c'est le signal que ton corps se défend contre une infection. 🌡️\n\n` +
+      `En Côte d'Ivoire, c'est très souvent le signe d'un **paludisme**, d'une grippe ou d'une infection.\n\n` +
+      `💡 **Pour t'aider au mieux** :\n` +
+      `- Depuis quand as-tu cette fièvre (ce matin, hier, plusieurs jours) ?\n` +
+      `- Est-ce que tu as d'autres symptômes comme des maux de tête, des frissons, des courbatures ou des douleurs au ventre ?\n\n` +
+      `En attendant, bois beaucoup d'eau pour ne pas te déshydrater et repose-toi au frais.`
+    );
+  }
+
+  // Contexte de MAUX DE VENTRE / DIGESTIF / DIARRHÉE
+  if (normalizedAll.includes("ventre") || normalizedAll.includes("diarrh") || normalizedAll.includes("vomiss") || normalizedAll.includes("nausee") || normalizedAll.includes("estomac") || normalizedAll.includes("intoxication")) {
+    if (isDurationFollowUp || userMessages.length > 1) {
+      return (
+        `D'accord, je comprends la situation. ${personaIntro}.\n\n` +
+        `Pour des maux de ventre ou troubles digestifs durant depuis ${lastUserMsg.trim()} :\n\n` +
+        `💧 **Priorité réhydratation** : si tu as de la diarrhée ou des nausées, prépare du SRO (Soluté de Réhydratation) : 1 litre d'eau propre + 6 cuillères à café de sucre + 1/2 cuillère à café de sel.\n` +
+        `🍲 **Alimentation douce** : mange léger (bouillie de riz, banane mûre, pain) et évite le piment, les sauces grasses et les laitages pendant 48h.\n` +
+        `⚠️ **Ne prends pas d'antibiotiques sans ordonnance**.\n\n` +
+        `🚨 **Consulte d'urgence** si la douleur est très vive en bas à droite du ventre (risque d'appendicite), s'il y a du sang dans les selles ou une forte fièvre.\n\n` +
+        `Tu as de la fièvre ou la douleur est supportable ?`
+      );
+    }
+
+    return (
+      `Je comprends, les maux de ventre sont très gênants et fatiguent beaucoup. 🫂\n\n` +
+      `Ça peut venir d'une indigestion, d'une gastro, du stress ou des règles chez les filles.\n\n` +
+      `Dis-moi : depuis quand as-tu cette douleur, et est-ce que tu as aussi des nausées, de la diarrhée ou de la fièvre ?`
+    );
+  }
+
+  // Contexte de MAUX DE TÊTE / VERTIGES
+  if (normalizedAll.includes("tete") || normalizedAll.includes("vertige") || normalizedAll.includes("migraine") || normalizedAll.includes("etourdi")) {
+    return (
+      `Les maux de tête peuvent être très pénibles. ${personaIntro}.\n\n` +
+      `💡 **Les causes les plus courantes chez nous** :\n` +
+      `- La déshydratation et le soleil tropical.\n` +
+      `- La fatigue oculaire (téléphone, révisions, écrans).\n` +
+      `- Le stress ou le début d'un accès de paludisme.\n\n` +
+      `🌿 **Conseils immédiats** : isole-toi dans une pièce sombre et calme, bois un grand verre d'eau fraîche et pose un linge frais sur ton front.\n\n` +
+      `Est-ce que tu as de la fièvre ou les yeux qui te brûlent en même temps ?`
+    );
+  }
 
   // 1. Salutations & Présentation
   if (
     /^(salut|bonjour|bonsoir|coucou|wesh|yo|hello|i ni ce|ani sogoma|qui es[- ]tu|c[' ]est quoi sankofa|tu es qui)/i.test(
-      normalized.trim(),
+      normalizedLast.trim(),
     )
   ) {
     if (isTonton) {
@@ -239,7 +315,7 @@ function synthesizeContextualResponse(
   }
 
   // 2. Remerciements / Clôture
-  if (/^(merci|c[' ]est gentil|merci beaucoup|d[' ]accord|ok merci|merci aya|merci yao)/i.test(normalized.trim())) {
+  if (/^(merci|c[' ]est gentil|merci beaucoup|d[' ]accord|ok merci|merci aya|merci yao)/i.test(normalizedLast.trim())) {
     if (isTonton) {
       return `Je t'en prie mon enfant. Prends bien soin de toi. Si tu as le moindre doute, n'hésite jamais à revenir me consulter ou à voir un médecin de proximité.`;
     }
@@ -247,10 +323,10 @@ function synthesizeContextualResponse(
   }
 
   // 3. Contraception d'urgence & Retard
-  if (normalized.includes("pilule") || normalized.includes("lendemain") || normalized.includes("norlevo") || normalized.includes("retard")) {
+  if (normalizedAll.includes("pilule") || normalizedAll.includes("lendemain") || normalizedAll.includes("norlevo") || normalizedAll.includes("retard") || normalizedAll.includes("enceinte")) {
     return (
       `Je t'entends bien. Si tu penses à la **pilule du lendemain (Norlevo ou EllaOne)** :\n\n` +
-      `⏱️ **Le délai compte** : elle est efficace si prise dans les **72h (3 jours)** après le rapport (jusqu'à 120h pour EllaOne), mais plus tu la prends vite (idéalement dans les 24h), plus elle est efficace.\n` +
+      `⏱️ **Le délai compte** : elle est efficace si prise dans les **72h (3 jours)** après le rapport (jusqu'à 120h pour EllaOne), mais plus tu la prends vite (idéalement dans les premières 24h), plus elle est efficace.\n` +
       `💊 **Où la trouver ?** Disponible en pharmacie en Côte d'Ivoire sans ordonnance (compte environ 1 500 à 3 500 FCFA).\n` +
       `💡 **Attention** : c'est un dépannage d'urgence, pas une contraception régulière. Elle ne protège pas contre les IST.\n\n` +
       `Tu as pu la prendre ou tu as d'autres symptômes ?`
@@ -258,7 +334,7 @@ function synthesizeContextualResponse(
   }
 
   // 4. TPE VIH & Rapport à risque récent
-  if (normalized.includes("tpe") || (normalized.includes("rapport") && (normalized.includes("risque") || normalized.includes("craque") || normalized.includes("protege") || normalized.includes("peur")))) {
+  if (normalizedAll.includes("tpe") || (normalizedAll.includes("rapport") && (normalizedAll.includes("risque") || normalizedAll.includes("craque") || normalizedAll.includes("protege") || normalizedAll.includes("peur")))) {
     return (
       `Respire, tu as bien fait d'en parler tout de suite. 🙏\n\n` +
       `🚨 **Le Traitement Post-Exposition (TPE VIH)** :\n` +
@@ -270,7 +346,7 @@ function synthesizeContextualResponse(
   }
 
   // 5. Brûlures, Démangeaisons, Pertes & IST
-  if (normalized.includes("brul") || normalized.includes("demange") || normalized.includes("perte") || normalized.includes("bouton") || normalized.includes("ecoulement") || normalized.includes("ist")) {
+  if (normalizedAll.includes("brul") || normalizedAll.includes("demange") || normalizedAll.includes("perte") || normalizedAll.includes("bouton") || normalizedAll.includes("ecoulement") || normalizedAll.includes("ist")) {
     return (
       `Je comprends ton inquiétude, et ce genre de symptôme est très fréquent. Pas de panique.\n\n` +
       `🔍 **Ce que ça peut être** : une infection urinaire, une mycose ou une Infection Sexuellement Transmissible (comme la chlamydia ou la gonococcie).\n` +
@@ -281,7 +357,7 @@ function synthesizeContextualResponse(
   }
 
   // 6. Santé Mentale, Stress, Examens & Déprime
-  if (normalized.includes("stress") || normalized.includes("deprim") || normalized.includes("triste") || normalized.includes("peur") || normalized.includes("bac") || normalized.includes("bepc") || normalized.includes("famille") || normalized.includes("pression") || normalized.includes("pleur")) {
+  if (normalizedAll.includes("stress") || normalizedAll.includes("deprim") || normalizedAll.includes("triste") || normalizedAll.includes("peur") || normalizedAll.includes("bac") || normalizedAll.includes("bepc") || normalizedAll.includes("famille") || normalizedAll.includes("pression") || normalizedAll.includes("pleur")) {
     return (
       `Je ressens ce que tu traverses, et je veux te dire une chose essentielle : **ce que tu ressens est 100% légitime, et tu n'es pas seul·e.** 🫂\n\n` +
       `Entre la pression des cours (BAC/BEPC), la famille et l'avenir, la charge mentale peut devenir très lourde. La santé mentale, ce n'est pas une faiblesse spirituelle ou de caractère, c'est comme le corps : quand c'est fatigué, il faut du repos et du soutien.\n\n` +
@@ -292,7 +368,7 @@ function synthesizeContextualResponse(
   }
 
   // 7. Addictologie (Tramadol, Kadhafi, Alcool, Chicha)
-  if (normalized.includes("tramadol") || normalized.includes("kadhafi") || normalized.includes("drogue") || normalized.includes("doliprane") || normalized.includes("chicha") || normalized.includes("alcool") || normalized.includes("depend")) {
+  if (normalizedAll.includes("tramadol") || normalizedAll.includes("kadhafi") || normalizedAll.includes("drogue") || normalizedAll.includes("doliprane") || normalizedAll.includes("chicha") || normalizedAll.includes("alcool") || normalizedAll.includes("depend")) {
     return (
       `Merci pour ta franchise. Ici, il n'y a **zéro jugement**.\n\n` +
       `Le Tramadol ou les mélanges comme le 'Kadhafi' sont de puissants opioïdes : au début ils donnent de l'énergie ou calment, mais le corps s'y habitue très vite et crée une forte dépendance physique et mentale.\n\n` +
@@ -303,7 +379,7 @@ function synthesizeContextualResponse(
   }
 
   // 8. Dépigmentation & Peau
-  if (normalized.includes("tchoko") || normalized.includes("eclairci") || normalized.includes("blanchir") || normalized.includes("creme") || normalized.includes("hydroquinone") || normalized.includes("tache")) {
+  if (normalizedAll.includes("tchoko") || normalizedAll.includes("eclairci") || normalizedAll.includes("blanchir") || normalizedAll.includes("creme") || normalizedAll.includes("hydroquinone") || normalizedAll.includes("tache")) {
     return (
       `Je suis content·e que tu m'en parles franchement.\n\n` +
       `Les crèmes et lotions décapantes (à base d'hydroquinone, de corticoïdes ou de mercure) sont interdites en Côte d'Ivoire depuis 2015 pour une raison simple : elles détruisent la barrière naturelle de ta peau et provoquent des vergetures irréversibles, des brûlures et des risques pour la santé.\n\n` +
@@ -313,7 +389,7 @@ function synthesizeContextualResponse(
   }
 
   // 9. Pharmacopée & Plantes locales
-  if (normalized.includes("moringa") || normalized.includes("kinkeliba") || normalized.includes("neem") || normalized.includes("gingembre") || normalized.includes("baobab") || normalized.includes("plante") || normalized.includes("tisane")) {
+  if (normalizedAll.includes("moringa") || normalizedAll.includes("kinkeliba") || normalizedAll.includes("neem") || normalizedAll.includes("gingembre") || normalizedAll.includes("baobab") || normalizedAll.includes("plante") || normalizedAll.includes("tisane")) {
     return (
       `Excellente question sur notre pharmacopée locale ! 🌿\n\n` +
       `Nos plantes traditionnelles (Kinkeliba pour le foie et la digestion, Moringa pour les vitamines, Gingembre pour l'énergie) ont de vraies vertus reconnues.\n` +
@@ -322,12 +398,15 @@ function synthesizeContextualResponse(
     );
   }
 
-  // 10. Synthèse contextuelle générale basée sur le RAG
+  // 10. Synthèse contextuelle générale pour message libre
   return (
-    `Je t'entends bien, et c'est une question très importante. En tant que ${name}, voici les points essentiels à retenir :\n\n` +
-    `💡 **Conseil santé** : Prends le temps d'observer tes symptômes. Ne pratique jamais d'automédication avec des comprimés non identifiés.\n` +
-    `🏥 **Pour un accompagnement sûr et confidentiel** : tu peux te tourner vers l'**AIBEF (27 22 44 09 09)** ou le centre de santé le plus proche de ton quartier.\n\n` +
-    `Peux-tu m'en dire un peu plus sur ta situation pour que je puisse t'aider au mieux ?`
+    `Je t'entends bien, et c'est un point important pour ta santé. ${personaIntro}.\n\n` +
+    `💡 **Mes conseils immédiats** :\n` +
+    `- Prends le temps d'observer tes symptômes sans paniquer.\n` +
+    `- Évite l'automédication avec des comprimés achetés dans la rue.\n` +
+    `- Reste bien hydraté·e et repose-toi.\n\n` +
+    `🏥 Pour toute consultation discrète et adaptée aux jeunes, l'**AIBEF (27 22 44 09 09)** ou le centre de santé de ton quartier sont à ton écoute.\n\n` +
+    `Dis-moi : depuis quand ressens-tu cela, et as-tu d'autres gênes particulières ?`
   );
 }
 
